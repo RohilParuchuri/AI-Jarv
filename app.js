@@ -871,7 +871,11 @@ function speak(text) {
   if (!('speechSynthesis' in window)) return;
   const clean = text.replace(/\s+/g, ' ').slice(0, 600);
   if (!clean) return;
-  speechSynthesis.cancel();
+  // Mobile browsers (esp. iOS) block TTS until the page has had a user
+  // gesture and refuse to start mid-sentence if the engine is paused, so
+  // resume before speaking and never cancel in the same tick.
+  if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
+  try { speechSynthesis.resume(); } catch (_) {}
   const u = new SpeechSynthesisUtterance(clean);
   u.rate = s.voiceRate;
   u.pitch = 1;
@@ -881,6 +885,25 @@ function speak(text) {
   }
   speechSynthesis.speak(u);
 }
+
+// One-time audio unlock: iOS only lets speech play after a real user gesture,
+// so fire a silent utterance when the user first taps the page. Without this,
+// asynchronous "speak reply" calls never make any sound on a phone.
+(function unlockVoice() {
+  if (!('speechSynthesis' in window)) return;
+  const prime = () => {
+    try {
+      speechSynthesis.resume();
+      const u = new SpeechSynthesisUtterance(' ');
+      u.volume = 0;
+      u.rate = 10;
+      speechSynthesis.speak(u);
+    } catch (_) {}
+  };
+  document.addEventListener('pointerdown', prime, { once: true, capture: true });
+  document.addEventListener('touchstart', prime, { once: true, capture: true });
+  document.addEventListener('keydown', prime, { once: true, capture: true });
+})();
 
 function buildVoices() {
   const sel = $('voice');
