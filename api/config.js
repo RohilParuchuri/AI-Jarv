@@ -8,7 +8,6 @@ export default function handler(req, res) {
   res.end(JSON.stringify({
     groq: !!process.env.GROQ_API_KEY,
     gemini: !!process.env.GEMINI_API_KEY,
-    cerebras: !!process.env.CEREBRAS_API_KEY,
     deepseek: !!process.env.HF_TOKEN
   }));
 }

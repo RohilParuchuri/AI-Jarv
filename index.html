@@ -56,17 +56,14 @@
       <section>
         <h3>Providers</h3>
         <p class="hint">All free, no card: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Gemini</a>,
-          <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq</a>,
-          <a href="https://cloud.cerebras.ai/" target="_blank" rel="noopener">Cerebras</a>. Ollama runs locally.
+          <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq</a>. DeepSeek runs free via Hugging Face.
           On the hosted app these live server-side.</p>
         <label>Groq API Key</label>
         <input id="groqKey" type="password" placeholder="gsk_..." autocomplete="off" />
         <label>Gemini API Key (free tier)</label>
-        <input id="geminiKey" type="password" placeholder="AIza..." autocomplete="off" />
-        <label>Cerebras API Key (free)</label>
-        <input id="cerebrasKey" type="password" placeholder="csk..." autocomplete="off" />
-        <label>DeepSeek V4 Flash (free via OpenRouter)</label>
-        <input id="deepseekKey" type="password" placeholder="sk-or-... (optional)" autocomplete="off" />
+        <input id="geminiKey" type="password" placeholder="AIza... or AQ..." autocomplete="off" />
+        <label>DeepSeek V4 Flash (free via Hugging Face)</label>
+        <input id="deepseekKey" type="password" placeholder="hf_... (optional)" autocomplete="off" />
         <label class="check"><input id="showKeys" type="checkbox" /> Show keys</label>
         <label>Ollama URL</label>
         <input id="ollamaUrl" type="text" placeholder="http://localhost:11434/v1" autocomplete="off" />
@@ -111,11 +108,9 @@
       <label>Groq API key <small>(free)</small></label>
       <input id="setupGroq" type="password" placeholder="gsk_..." />
       <label>Gemini API key <small>(free, optional)</small></label>
-      <input id="setupGemini" type="password" placeholder="AIza..." />
-      <label>Cerebras API key <small>(free, optional)</small></label>
-      <input id="setupCerebras" type="password" placeholder="csk..." />
-      <label>DeepSeek V4 Flash <small>(free via OpenRouter)</small></label>
-      <input id="setupDeepSeek" type="password" placeholder="sk-or-... (optional)" />
+      <input id="setupGemini" type="password" placeholder="AIza... or AQ..." />
+      <label>DeepSeek V4 Flash <small>(free via Hugging Face)</small></label>
+      <input id="setupDeepSeek" type="password" placeholder="hf_... (optional)" />
       <label>Ollama URL <small>(leave blank if not installed)</small></label>
       <input id="setupOllama" type="text" placeholder="http://localhost:11434/v1" />
       <label>Ollama model</label>
@@ -129,6 +124,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=24"></script>
+  <script src="app.js?v=25"></script>
 </body>
 </html>

@@ -23,7 +23,6 @@ async function withTimeout(promise, ms) {
 
 const PROVIDERS = {
   gemini: { base: 'https://generativelanguage.googleapis.com/v1beta/openai', key: () => s.geminiKey, needKey: true },
-  cerebras: { base: 'https://api.cerebras.ai/v1', key: () => s.cerebrasKey, needKey: true },
   groq: { base: 'https://api.groq.com/openai/v1', key: () => s.groqKey, needKey: true },
   deepseek: { base: 'https://router.huggingface.co/v1', key: () => s.deepseekKey, needKey: true },
   ollama: { base: () => (s.ollamaUrl || '').replace(/\/+$/, ''), key: () => '', needKey: false }
@@ -35,7 +34,7 @@ const PROXY = location && location.protocol === 'https:' && /(?:\.vercel\.app|ai
   ? location.origin + '/api/chat'
   : '';
 const CFG = PROXY ? PROXY.replace(/\/api\/chat$/, '/api/config') : '';
-const PROXIED_TAGS = ['groq', 'gemini', 'cerebras', 'deepseek'];
+const PROXIED_TAGS = ['groq', 'gemini', 'deepseek'];
 let serverProviders = null;
 
 function serverEnabled(tag) {
@@ -69,15 +68,13 @@ function providerEnabled(tag) {
 const MODELS = [
   { id: 'llama-3.3-70b-versatile', tag: 'groq', role: 'smart', label: 'Groq / Llama 3.3 70B' },
   { id: 'llama-3.1-8b-instant', tag: 'groq', role: 'fast', label: 'Groq / Llama 3.1 8B' },
-  { id: 'gemini-2.5-flash', tag: 'gemini', role: 'smart', label: 'Gemini / Flash 2.5 (free)' },
-  { id: 'gemini-2.5-flash-lite', tag: 'gemini', role: 'fast', label: 'Gemini / Flash-Lite 2.5 (free)' },
-  { id: 'llama-3.3-70b', tag: 'cerebras', role: 'smart', label: 'Cerebras / Llama 3.3 70B' },
-  { id: 'llama-3.1-8b', tag: 'cerebras', role: 'fast', label: 'Cerebras / Llama 3.1 8B' },
+  { id: 'gemini-3-flash-preview', tag: 'gemini', role: 'smart', label: 'Gemini / 3 Flash (free)' },
+  { id: 'gemini-flash-latest', tag: 'gemini', role: 'fast', label: 'Gemini / Flash (free)' },
   { id: 'deepseek-ai/DeepSeek-V4-Flash', tag: 'deepseek', role: 'smart', label: 'DeepSeek / V4 Flash (free)' }
 ];
 
 const VISION_MODELS = [
-  { id: 'gemini-2.5-flash', tag: 'gemini', role: 'smart', label: 'Gemini / Flash 2.5 (vision)' }
+  { id: 'gemini-3-flash-preview', tag: 'gemini', role: 'smart', label: 'Gemini / 3 Flash (vision)' }
 ];
 
 const SYSTEM = {
@@ -1016,8 +1013,7 @@ function syncSettingsFromUI() {
   s.orKey = $('orKey') ? $('orKey').value.trim() : s.orKey;
   s.groqKey = $('groqKey').value.trim();
   s.geminiKey = $('geminiKey').value.trim();
-  s.cerebrasKey = $('cerebrasKey').value.trim();
-  s.deepseekKey = $('deepseekKey').value.trim();
+  s.deepseekKey = $('deepseekKey') ? $('deepseekKey').value.trim() : s.deepseekKey;
   s.ollamaUrl = $('ollamaUrl').value.trim() || 'http://localhost:11434/v1';
   s.ollamaModel = $('ollamaModel').value.trim() || 'llama3.2';
   s.voiceOn = $('voiceOn').checked;
@@ -1034,8 +1030,7 @@ function loadSettingsIntoUI() {
   if ($('orKey')) $('orKey').value = s.orKey;
   $('groqKey').value = s.groqKey;
   $('geminiKey').value = s.geminiKey;
-  $('cerebrasKey').value = s.cerebrasKey;
-  $('deepseekKey').value = s.deepseekKey;
+  if ($('deepseekKey')) $('deepseekKey').value = s.deepseekKey;
   $('ollamaUrl').value = s.ollamaUrl;
   $('ollamaModel').value = s.ollamaModel;
   $('voiceOn').checked = s.voiceOn;
@@ -1088,7 +1083,7 @@ $('imgInput').addEventListener('change', (e) => {
 });
 $('showKeys').addEventListener('change', () => {
   const show = $('showKeys').checked;
-  for (const id of ['orKey', 'groqKey', 'geminiKey', 'cerebrasKey', 'deepseekKey']) {
+  for (const id of ['orKey', 'groqKey', 'geminiKey', 'deepseekKey']) {
     const el = $(id);
     if (el) el.type = show ? 'text' : 'password';
   }
@@ -1105,7 +1100,7 @@ $('closeSettings').addEventListener('click', hideSettings);
 $('settingsPanel').addEventListener('click', (e) => { if (e.target === $('settingsPanel')) hideSettings(); });
 $('saveSettingsBtn').addEventListener('click', hideSettings);
 
-['groqKey', 'geminiKey', 'cerebrasKey', 'deepseekKey', 'ollamaUrl', 'ollamaModel', 'voiceOn', 'voiceInputOn', 'voiceRate', 'voice', 'toolSearch', 'toolCalc', 'toolTime'].forEach((id) => {
+['groqKey', 'geminiKey', 'deepseekKey', 'ollamaUrl', 'ollamaModel', 'voiceOn', 'voiceInputOn', 'voiceRate', 'voice', 'toolSearch', 'toolCalc', 'toolTime'].forEach((id) => {
   const el = $(id);
   const ev = (el.tagName === 'SELECT' || el.type === 'checkbox') ? 'change' : 'input';
   el.addEventListener(ev, syncSettingsFromUI);
@@ -1198,13 +1193,11 @@ function initSetup() {
   $('setupGo').addEventListener('click', () => {
     const grk = $('setupGroq').value.trim();
     const gmk = $('setupGemini').value.trim();
-    const cek = $('setupCerebras').value.trim();
     const dsk = $('setupDeepSeek').value.trim();
     const olU = $('setupOllama').value.trim();
     const olM = $('setupOllamaModel').value.trim();
     if (grk) s.groqKey = grk;
     if (gmk) s.geminiKey = gmk;
-    if (cek) s.cerebrasKey = cek;
     if (dsk) s.deepseekKey = dsk;
     if (olU) s.ollamaUrl = olU;
     else s.ollamaUrl = s.ollamaUrl || 'http://localhost:11434/v1';

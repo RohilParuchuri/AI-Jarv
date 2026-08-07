@@ -1,5 +1,5 @@
 // Vercel serverless function: proxies chat completions to free providers
-// (Groq, Gemini free tier, Cerebras) using keys stored ONLY as Vercel
+// (Groq, Gemini free tier, DeepSeek V4 Flash via HF Gateway) using keys stored ONLY as Vercel
 // environment variables, so no API key ever reaches the browser or the repo.
 
 // IMPORTANT: Vercel's runtime for this project only reliably works with the
@@ -10,7 +10,6 @@
 const CONFIG = {
   groq: { base: 'https://api.groq.com/openai/v1', key: () => process.env.GROQ_API_KEY },
   gemini: { base: 'https://generativelanguage.googleapis.com/v1beta/openai', key: () => process.env.GEMINI_API_KEY },
-  cerebras: { base: 'https://api.cerebras.ai/v1', key: () => process.env.CEREBRAS_API_KEY },
   // DeepSeek V4 Flash via Hugging Face Gateway's free "friendlyhw" provider.
   deepseek: { base: 'https://router.huggingface.co/v1', key: () => process.env.HF_TOKEN }
 };
