@@ -27,6 +27,17 @@ const PROVIDERS = {
   ollama: { base: () => (s.ollamaUrl || '').replace(/\/+$/, ''), key: () => '', needKey: false }
 };
 
+// When served from the Vercel deployment, API keys live server-side only and
+// requests go through /api/chat. Locally, the app talks to providers directly.
+const PROXY = location && location.protocol === 'https:' && /(?:\.vercel\.app|ai\-jarv)/i.test(location.hostname)
+  ? location.origin + '/api/chat'
+  : '';
+function providerEnabled(tag) {
+  if (tag === 'ollama') return !!s.ollamaUrl;
+  if (PROXY && (tag === 'groq' || tag === 'openrouter')) return true;
+  return !PROVIDERS[tag].needKey || !!PROVIDERS[tag].key();
+}
+
 const MODELS = [
   { id: 'llama-3.3-70b-versatile', tag: 'groq', role: 'smart', label: 'Groq / Llama 3.3 70B' },
   { id: 'llama-3.1-8b-instant', tag: 'groq', role: 'fast', label: 'Groq / Llama 3.1 8B' },
@@ -124,11 +135,6 @@ function loadState() {
 }
 function saveState() { localStorage.setItem('jarvis.config', JSON.stringify(s)); }
 
-function providerEnabled(tag) {
-  if (tag === 'ollama') return !!s.ollamaUrl;
-  return !PROVIDERS[tag].needKey || !!PROVIDERS[tag].key();
-}
-
 function poolFor(mode) {
   if (mode === 'manual' && manualModel) return [manualModel];
   const smart = MODELS.filter((m) => m.role === 'smart' && providerEnabled(m.tag));
@@ -159,13 +165,15 @@ function hasImagesInChat() {
 
 async function chatOnce(model, messages, tools) {
   const prov = PROVIDERS[model.tag];
+  const proxied = PROXY && (model.tag === 'groq' || model.tag === 'openrouter');
   const base = typeof prov.base === 'function' ? prov.base() : prov.base;
-  const url = base + '/chat/completions';
+  const url = proxied ? PROXY : base + '/chat/completions';
   const body = { model: model.id, messages, stream: false, temperature: 0.6 };
   if (tools && tools.length) { body.tools = tools; body.tool_choice = 'auto'; }
+  if (proxied) body.provider = model.tag;
 
   const headers = { 'Content-Type': 'application/json' };
-  if (prov.key()) headers.Authorization = 'Bearer ' + prov.key();
+  if (!proxied && prov.key()) headers.Authorization = 'Bearer ' + prov.key();
 
   let res;
   try {
@@ -190,11 +198,14 @@ async function chatOnce(model, messages, tools) {
 
 async function streamChat(model, messages, onToken) {
   const prov = PROVIDERS[model.tag];
+  const proxied = PROXY && (model.tag === 'groq' || model.tag === 'openrouter');
   const base = typeof prov.base === 'function' ? prov.base() : prov.base;
-  const url = base + '/chat/completions';
+  const url = proxied ? PROXY : base + '/chat/completions';
   const headers = { 'Content-Type': 'application/json', Accept: 'text/event-stream' };
-  if (prov.key()) headers.Authorization = 'Bearer ' + prov.key();
-  const res = await fetchT(url, { method: 'POST', headers, body: JSON.stringify({ model: model.id, messages, stream: true, temperature: 0.6 }) }, 60000);
+  if (!proxied && prov.key()) headers.Authorization = 'Bearer ' + prov.key();
+  const payload = { model: model.id, messages, stream: true, temperature: 0.6 };
+  if (proxied) payload.provider = model.tag;
+  const res = await fetchT(url, { method: 'POST', headers, body: JSON.stringify(payload) }, 60000);
   if (!res.ok) {
     let msg = 'HTTP ' + res.status;
     try { const j = await res.json(); msg = (j.error && (j.error.message || j.error)) || msg; } catch (_) {}
@@ -1146,7 +1157,7 @@ function boot() {
   }
 }
 
-if (localStorage.getItem('jarvis.ready') === '1') {
+if (PROXY || localStorage.getItem('jarvis.ready') === '1') {
   boot();
 } else {
   initSetup();
