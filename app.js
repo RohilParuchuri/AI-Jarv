@@ -126,12 +126,11 @@ function systemPrompt() {
 
 function persistConversation() {
   localStorage.setItem('rohil.history', JSON.stringify(chat));
+  persistSessions();
 }
 function loadConversation() {
-  try {
-    const d = JSON.parse(localStorage.getItem('rohil.history') || 'null');
-    return Array.isArray(d) ? d : [];
-  } catch (_) { return []; }
+  const act = currentSession();
+  return act.msgs = act.msgs || [];
 }
 
 const TOOLS = [
@@ -193,10 +192,160 @@ function loadState() {
     toolSearch: d.toolSearch !== false,
     toolCalc: d.toolCalc !== false,
     toolTime: d.toolTime !== false,
-    mode: d.mode || 'auto'
+    mode: d.mode || 'auto',
+    requests: d.requests || 0,
+    activeSession: d.activeSession || ''
   };
 }
 function saveState() { localStorage.setItem('jarvis.config', JSON.stringify(s)); }
+
+/* ---------------- Chat sessions (windows) ---------------- */
+
+const SESSIONS_KEY = 'rokil.sessions';
+let sessions = loadSessions();
+let activeSessionId = (sessions.some((x) => x.id === s.activeSession) ? s.activeSession : sessions[0].id);
+
+function loadSessions() {
+  let arr = null;
+  try { arr = JSON.parse(localStorage.getItem(SESSIONS_KEY) || 'null'); } catch (_) {}
+  if (Array.isArray(arr) && arr.length) return arr;
+  let legacy = [];
+  try { legacy = JSON.parse(localStorage.getItem('rohil.history') || 'null'); } catch (_) {}
+  if (Array.isArray(legacy) && legacy.length) localStorage.removeItem('rohil.history');
+  return [{ id: 'main', name: 'Chat', msgs: legacy, updated: Date.now() }];
+}
+
+function storeSessions() {
+  localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions.slice(0, 50)));
+  s.activeSession = activeSessionId;
+  saveState();
+}
+
+function currentSession() {
+  let act = sessions.find((x) => x.id === activeSessionId);
+  if (!act) { act = sessions[0]; activeSessionId = act.id; }
+  return act;
+}
+
+function sessionTitle(msgs) {
+  for (const m of msgs) {
+    if (m.role !== 'user') continue;
+    const t0 = typeof m.content === 'string' ? m.content : (m.content || []).map((p) => p.text || '').join(' ');
+    const t = String(t0 || '').replace(/\s+/g, ' ').trim();
+    if (t) return t.length > 42 ? t.slice(0, 42) + '…' : t;
+  }
+  return 'New chat';
+}
+
+function persistSessions() {
+  const act = currentSession();
+  act.msgs = chat;
+  act.updated = Date.now();
+  act.name = sessionTitle(act.msgs);
+  storeSessions();
+  updateChatsUI();
+}
+
+function reqCount() {
+  return s.requests || 0;
+}
+
+function updateChatsUI() {
+  const pill = $('reqPill');
+  if (pill) pill.textContent = String(reqCount());
+  const stat = $('chatStat');
+  if (stat) stat.textContent = 'Requests sent: ' + reqCount();
+  if (!$('chatsPanel').classList.contains('hidden')) renderChatList();
+}
+
+function renderChatList() {
+  const list = $('chatList');
+  if (!list) return;
+  list.innerHTML = '';
+  const sorted = sessions.slice().sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  for (const c of sorted) {
+    const row = document.createElement('div');
+    row.className = 'chat-item' + (c.id === activeSessionId ? ' active' : '');
+    const main = document.createElement('div');
+    main.className = 'chat-main';
+    const name = document.createElement('div');
+    name.className = 'chat-name';
+    name.textContent = c.name || 'Chat';
+    const meta = document.createElement('div');
+    meta.className = 'chat-meta';
+    const n = (c.msgs || []).length;
+    const dt = new Date(c.updated || Date.now());
+    const when = Date.now() - dt.getTime() < 86400000
+      ? dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+      : dt.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    meta.textContent = (n ? n + (n === 1 ? ' message' : ' messages') + ' · ' : '') + when;
+    main.appendChild(name);
+    main.appendChild(meta);
+    const del = document.createElement('button');
+    del.className = 'chat-del';
+    del.textContent = '\u00d7';
+    del.title = 'Delete chat';
+    del.addEventListener('click', (e) => { e.stopPropagation(); removeSession(c.id); });
+    row.appendChild(main);
+    row.appendChild(del);
+    row.addEventListener('click', () => switchSession(c.id));
+    list.appendChild(row);
+  }
+}
+
+function switchSession(id) {
+  if (id === activeSessionId) return;
+  persistConversation();
+  activeSessionId = id;
+  storeSessions();
+  const act = currentSession();
+  chat = act.msgs = act.msgs || [];
+  chatEl.innerHTML = '';
+  renderHistory();
+  if (!chat.length) addWelcome();
+  $('chatsPanel').classList.add('hidden');
+  scroll();
+}
+
+function removeSession(id) {
+  if (sessions.length <= 1) {
+    persistConversation();
+    activeSessionId = sessions[0].id;
+    chat = sessions[0].msgs = [];
+    chatEl.innerHTML = '';
+    addWelcome();
+    persistConversation();
+    updateChatsUI();
+    return;
+  }
+  if (id === activeSessionId) {
+    sessions = sessions.filter((x) => x.id !== id);
+    activeSessionId = sessions[0].id;
+    const act = currentSession();
+    chat = act.msgs = act.msgs || [];
+    chatEl.innerHTML = '';
+    renderHistory();
+    if (!chat.length) addWelcome();
+    persistSessions();
+  } else {
+    sessions = sessions.filter((x) => x.id !== id);
+    storeSessions();
+    updateChatsUI();
+  }
+}
+
+function newSession() {
+  persistConversation();
+  const id = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  sessions.unshift({ id, name: 'New chat', msgs: [], updated: Date.now() });
+  activeSessionId = id;
+  storeSessions();
+  chat = [];
+  chatEl.innerHTML = '';
+  addWelcome();
+  persistSessions();
+  scroll();
+}
 
 function poolFor(mode) {
   if (mode === 'manual' && manualModel) return [manualModel];
@@ -306,6 +455,9 @@ async function streamChat(model, messages, onToken) {
 
 async function run() {
   if (busy) return;
+  s.requests = (s.requests || 0) + 1;
+  saveState();
+  updateChatsUI();
   busy = true;
   setSendDisabled(true);
   aborted = false;
@@ -933,11 +1085,14 @@ function memoryCommand(val) {
   if (/(erase|forget|wipe|clear|delete)\s+(everything|all|my\s+memory|your\s+memory|your\s+brain|the\s+memory|all\s+memories|history)\b/i.test(low) || /forget\s+everything/i.test(low)) {
     s.memory = [];
     chat = [];
-    saveState();
+    sessions = [{ id: 'main', name: 'Chat', msgs: [], updated: Date.now() }];
+    activeSessionId = 'main';
+    s.activeSession = 'main';
     localStorage.removeItem('rohil.history');
+    storeSessions();
     renderHistory();
     addWelcome();
-    ack("Understood. I have wiped my memory and our conversation history.");
+    ack("Understood. I have wiped my memory and cleared my chats.");
     return true;
   }
   const rm = t.match(/^(?:remember|remind me|don'?t forget|keep in mind|keep this|note)\b\s*[:.\-]?\s*(.+)$/i);
@@ -1352,12 +1507,12 @@ $('restoreFile').addEventListener('change', async (e) => {
     setStatus('Restore failed: ' + err.message, 'error');
   }
 });
-$('newChatBtn').addEventListener('click', () => {
-  chat = [];
-  chatEl.innerHTML = '';
-  addWelcome();
-  persistConversation();
+$('newChatBtn').addEventListener('click', newSession);
+$('chatsBtn').addEventListener('click', () => {
+  renderChatList();
+  $('chatsPanel').classList.remove('hidden');
 });
+$('closeChats').addEventListener('click', () => $('chatsPanel').classList.add('hidden'));
 
 function addWelcome() {
   const b = addMsg('ai');
@@ -1396,6 +1551,7 @@ function boot() {
   loadSettingsIntoUI();
   buildModelSelect();
   buildVoices();
+  updateChatsUI();
   if ('speechSynthesis' in window) {
     speechSynthesis.onvoiceschanged = () => {
       const cur = $('voice').value;

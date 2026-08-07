@@ -19,6 +19,8 @@
       <span class="brand-name">Rohil</span>
     </div>
     <div class="top-actions">
+      <span id="reqPill" class="req-pill" title="Chat requests sent">0</span>
+      <button id="chatsBtn" class="icon-btn" title="Chats" aria-label="Chats">&#9776;</button>
       <button id="newChatBtn" class="icon-btn" title="New chat" aria-label="New chat">&#10022;</button>
       <button id="settingsBtn" class="icon-btn" title="Settings" aria-label="Settings">&#9881;</button>
     </div>
@@ -46,6 +48,17 @@
     <div id="imgPreview" class="img-preview"></div>
     <div id="status" class="status"></div>
   </footer>
+
+  <div id="chatsPanel" class="panel hidden">
+    <div class="panel-head">
+      <h2>Chats</h2>
+      <button id="closeChats" class="icon-btn" aria-label="Close">&#10005;</button>
+    </div>
+    <div class="panel-body">
+      <div id="chatStat" class="chat-stat"></div>
+      <div id="chatList" class="chat-list"></div>
+    </div>
+  </div>
 
   <div id="settingsPanel" class="panel hidden">
     <div class="panel-head">
@@ -125,6 +138,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=32"></script>
+  <script src="app.js?v=33"></script>
 </body>
 </html>

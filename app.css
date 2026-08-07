@@ -54,7 +54,51 @@ body {
 }
 @keyframes pulse { 50% { transform: scale(1.15); } }
 
-.top-actions { display: flex; gap: 6px; }
+.top-actions { display: flex; gap: 6px; align-items: center; }
+
+.req-pill {
+  font-size: 0.72rem;
+  color: var(--accent);
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 9px;
+  white-space: nowrap;
+}
+
+.chat-stat {
+  font-size: 0.78rem;
+  color: var(--muted);
+  padding: 2px 2px 12px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+.chat-list { display: flex; flex-direction: column; gap: 8px; }
+.chat-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 9px 11px;
+  cursor: pointer;
+}
+.chat-item.active { border-color: var(--accent); }
+.chat-item:hover { background: rgba(255,255,255,0.05); }
+.chat-main { flex: 1; min-width: 0; }
+.chat-name { font-size: 0.9rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chat-meta { font-size: 0.72rem; color: var(--muted); }
+.chat-del {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.chat-del:hover { color: var(--err); }
 
 .icon-btn {
   background: var(--panel2);
