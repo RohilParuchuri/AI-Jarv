@@ -3,7 +3,6 @@
   "version": 2,
   "buildCommand": "",
   "outputDirectory": ".",
-  "framework": "other",
   "cleanUrls": true,
   "headers": [
     {
