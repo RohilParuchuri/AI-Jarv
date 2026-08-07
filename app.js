@@ -890,7 +890,7 @@ function speak(text) {
   if (!('speechSynthesis' in window)) return;
   const clean = text.replace(/\s+/g, ' ').slice(0, 600);
   if (!clean) return;
-  // Mobile browsers (esp. iOS) block TTS until the page has had a user
+  // Mobile browsers (esp. iOS Safari) block TTS until the page has had a user
   // gesture and refuse to start mid-sentence if the engine is paused, so
   // resume before speaking and never cancel in the same tick.
   if (speechSynthesis.speaking || speechSynthesis.pending) speechSynthesis.cancel();
@@ -898,8 +898,12 @@ function speak(text) {
   const u = new SpeechSynthesisUtterance(clean);
   u.rate = s.voiceRate;
   u.pitch = 1;
+  const voices = speechSynthesis.getVoices();
   if (s.voiceName && s.voiceName !== 'default') {
-    const v = speechSynthesis.getVoices().find((x) => x.name === s.voiceName);
+    const v = voices.find((x) => x.name === s.voiceName);
+    if (v) u.voice = v;
+  } else {
+    const v = preferredVoice(voices);
     if (v) u.voice = v;
   }
   speechSynthesis.speak(u);
@@ -924,24 +928,78 @@ function speak(text) {
   document.addEventListener('keydown', prime, { once: true, capture: true });
 })();
 
+const VOICE_PRIORITY = [
+  'google us english',
+  'microsoft aria',
+  'samantha',
+  'microsoft jenny',
+  'karen',
+  'microsoft zira',
+  'microsoft christopher',
+  'microsoft guy',
+  'daniel',
+  'microsoft david',
+  'moira',
+  'tessa',
+  'fiona',
+  'microsoft mark'
+];
+
+function scoreVoice(v) {
+  const n = (v.name || '').toLowerCase();
+  for (let i = 0; i < VOICE_PRIORITY.length; i++) {
+    if (n.indexOf(VOICE_PRIORITY[i]) !== -1) return i;
+  }
+  return -1;
+}
+
+function preferredVoice(voices) {
+  let best = null;
+  let bestRank = Infinity;
+  for (const v of voices) {
+    const sc = scoreVoice(v);
+    if (sc >= 0 && sc < bestRank) { best = v; bestRank = sc; }
+  }
+  return best;
+}
+
 function buildVoices() {
   const sel = $('voice');
   if (!sel) return;
-  sel.innerHTML = '';
   const voices = ('speechSynthesis' in window) ? speechSynthesis.getVoices() : [];
-  s.voiceName = s.voiceName || 'default';
-  const keep = Array.from(voices).some((v) => v.name === s.voiceName) ? s.voiceName === 'default' ? '' : s.voiceName : '';
+  sel.innerHTML = '';
+  const auto = preferredVoice(voices);
   const def = document.createElement('option');
   def.value = 'default';
-  def.textContent = 'Default voice';
+  def.textContent = auto ? auto.name + ' (auto)' : 'System default';
   sel.appendChild(def);
-  for (const v of voices) {
-    const o = document.createElement('option');
-    o.value = v.name;
-    o.textContent = v.name + (v.lang ? ' (' + v.lang + ')' : '');
-    sel.appendChild(o);
+
+  const favs = voices.filter((v) => scoreVoice(v) >= 0).sort((a, b) => scoreVoice(a) - scoreVoice(b));
+  const rest = voices.filter((v) => scoreVoice(v) < 0).sort((a, b) => a.name.localeCompare(b.name));
+  if (favs.length) {
+    const g = document.createElement('optgroup');
+    g.label = 'Recommended';
+    sel.appendChild(g);
+    for (const v of favs) {
+      const o = document.createElement('option');
+      o.value = v.name;
+      o.textContent = v.name + (v.lang ? ' (' + v.lang + ')' : '');
+      g.appendChild(o);
+    }
   }
-  if (keep && Array.from(sel.options).some((o) => o.value === keep)) sel.value = keep;
+  if (rest.length) {
+    const g = document.createElement('optgroup');
+    g.label = 'All voices';
+    sel.appendChild(g);
+    for (const v of rest) {
+      const o = document.createElement('option');
+      o.value = v.name;
+      o.textContent = v.name + (v.lang ? ' (' + v.lang + ')' : '');
+      g.appendChild(o);
+    }
+  }
+  const keep = Array.from(voices).some((v) => v.name === s.voiceName) ? s.voiceName : 'default';
+  if (keep !== 'default' && Array.from(sel.options).some((o) => o.value === keep)) sel.value = keep;
   else sel.value = 'default';
 }
 
