@@ -79,8 +79,14 @@ const VISION_MODELS = [
 
 const SYSTEM = {
   role: 'system',
-  content: 'You are Rohil, a helpful personal AI assistant. Be concise, accurate and friendly. ' +
-    'Answer the user directly. If you call a tool, briefly present the result to the user in your next reply.'
+  content:
+    'You are Rohil, a helpful personal AI assistant. Be extremely concise: answer directly in as few words as possible. ' +
+    'No filler, no disclaimers, no "I\'m an AI" phrasing, no repetition of the user\'s question.\n' +
+    'Formatting rules:\n' +
+    '- Math / arithmetic: show minimal working if useful, then put the final answer alone on its own line wrapped in **double asterisks** (e.g. **17**).\n' +
+    '- Coding: put the solution inside a ``` code block, then a single bold one-line takeaway (**bold**) beneath it.\n' +
+    '- Bold only actual answers/results, never entire sentences.\n' +
+    'Never mention any model, API, or provider name. You are simply Rohil.'
 };
 
 function systemPrompt() {
@@ -305,8 +311,7 @@ async function run() {
     for (let round = 0; round < 6 && !done && !aborted; round++) {
       for (const model of candidates) {
         if (aborted) break;
-        if (!liveBubble) startBubble(model.label);
-        else setBubbleMeta(model.label);
+        if (!liveBubble) startBubble();
         try {
           const { content, toolCalls } = await chatOnce(model, [systemPrompt()].concat(chat), tools);
           if (toolCalls.length) {
@@ -336,7 +341,7 @@ async function run() {
           if (aborted) break;
           lastErr = e;
           failBubble();
-          setStatus('Provider ' + model.label + ' failed: ' + e.message + ' - trying next...');
+          setStatus('Didn\'t get a good answer — trying the next one…');
           // Free tiers rate-limit aggressively; pause so the next provider
           // isn't instantly hammered (which is what caused the cascade).
           await sleep(/429|quota|rate|too many|limit|capacity/i.test(e.message) ? 1600 : 300);
@@ -345,7 +350,7 @@ async function run() {
     }
 
     if (aborted) { teardownBubble(); setStatus('Stopped.'); }
-    else if (lastErr && !done) { teardownBubble(); setStatus('No model responded: ' + lastErr.message, 'error'); }
+    else if (lastErr && !done) { teardownBubble(); setStatus('No reply right now — try again in a moment.', 'error'); }
     else if (done) {
       if (s.voiceOn && aiText.trim()) speak(aiText.trim());
       lastFinalText = aiText;
@@ -377,12 +382,12 @@ function allEnabledModels() {
   });
 }
 
-function addSourceBubble(label, content) {
+function addSourceBubble(content) {
   const m = document.createElement('div');
   m.className = 'msg tool-msg';
   const b = document.createElement('div');
   b.className = 'bubble';
-  b.textContent = 'Source ' + label + ':\n' + (content || '(empty)').slice(0, 220);
+  b.textContent = 'Rohil: ' + (content || '(empty)').slice(0, 220);
   m.appendChild(b);
   chatEl.appendChild(m);
   scroll();
@@ -407,18 +412,18 @@ async function runBlend() {
       new Promise((res) => setTimeout(res, 4000))
     ]);
     if (!results.length) {
-      setStatus('All providers failed in Blend mode. Try Fast or Auto.', 'error');
+      setStatus('Couldn\'t get an answer right now — try again in a moment.', 'error');
       return;
     }
-    for (const r of results) addSourceBubble(r.label, r.content);
+    for (const r of results) addSourceBubble(r.content);
 
     let best = '';
     if (results.length === 1) {
       best = results[0].content.trim();
-      startBubble('Rohil / 1 source');
+      startBubble();
       renderText(best);
       finishBubble();
-      setStatus('Blend: only ' + results[0].label + ' answered.');
+      setStatus('Answer ready.');
     } else {
       const judge = models[0];
       const lastUser = chat.length ? chat[chat.length - 1].content : 'the question';
@@ -431,7 +436,7 @@ async function runBlend() {
           'Output ONLY the winning answer with no labels.\n\n' +
           results.map((r) => '[' + r.label + ']:\n' + r.content).join('\n\n')
       };
-      startBubble('Rohil / judging ' + results.length + ' sources');
+      startBubble();
       let streamed = false;
       try {
         const out = await withTimeout(streamChat(judge, [judgePrompt], (t) => { if (liveBubble) renderText(t); }), 15000);
@@ -631,20 +636,15 @@ function addMsg(role) {
   return b;
 }
 
-function startBubble(meta) {
-  liveMeta = meta;
+function startBubble() {
+  liveMeta = 'Rohil';
   liveBubble = addMsg('ai');
   liveBubble.className = 'bubble streaming';
   liveTextNode = document.createElement('div');
   liveTextNode.className = 'typing-dots';
   liveTextNode.innerHTML = '<span></span><span></span><span></span>';
   liveBubble.appendChild(liveTextNode);
-  liveBubble.appendChild(metaLine(meta));
-}
-function setBubbleMeta(meta) {
-  liveMeta = meta;
-  const ml = liveBubble.querySelector('.meta');
-  if (ml) ml.textContent = meta;
+  liveBubble.appendChild(metaLine('Rohil'));
 }
 function metaLine(text) {
   const d = document.createElement('div');
@@ -653,7 +653,7 @@ function metaLine(text) {
   return d;
 }
 function renderText(text) {
-  liveTextNode.textContent = text;
+  liveTextNode.innerHTML = renderMarkdown(text);
   scroll();
 }
 function finishBubble() {
@@ -700,6 +700,25 @@ function setSendDisabled(v) {
 }
 
 function esc(t) { return String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+
+function mdEscape(t) { return String(t == null ? '' : t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+
+function renderMarkdown(text) {
+  let t = mdEscape(text);
+  const blocks = [];
+  t = t.replace(/```[^\n`]*\n?([\s\S]*?)```/g, (_m, code) => {
+    blocks.push('<pre><code>' + code.replace(/\n$/, '') + '</code></pre>');
+    return '\u0000BLOCK' + (blocks.length - 1) + '\u0000';
+  });
+  t = t.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  t = t.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  t = t.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+  t = t.replace(/\n{2,}/g, '\u0000P\u0000');
+  t = t.replace(/\n/g, '<br>');
+  t = t.replace(/\u0000P\u0000/g, '<br><br>');
+  t = t.replace(/\u0000BLOCK(\d+)\u0000/g, (_m, i) => blocks[+i] || '');
+  return t;
+}
 
 function fileToDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -808,8 +827,12 @@ function renderHistory() {
   for (const turn of chat) {
     if (!turn || turn.role === 'system' || (turn.role === 'assistant' && !turn.content)) continue;
     const b = addMsg(turn.role === 'user' ? 'user' : (turn.role === 'tool' ? 'tool-msg' : 'ai'));
-    if (turn.role === 'tool') b.textContent = 'tool: ' + String(turn.content || '').slice(0, 120);
-    else renderInto(b, turn.content || '');
+    if (turn.role === 'tool') b.textContent = String(turn.content || '').slice(0, 120);
+    else if (turn.role === 'assistant') {
+      const sp = document.createElement('div');
+      sp.innerHTML = renderMarkdown(turn.content || '');
+      b.appendChild(sp);
+    } else renderInto(b, turn.content || '');
   }
   scroll();
 }
@@ -1037,6 +1060,12 @@ function toggleMic(on) {
 
 /* ---------------- Settings ---------------- */
 
+function friendlyModelLabel(m, seen) {
+  const base = m.role === 'fast' ? 'Rohil · Fast' : (m.role === 'vision' ? 'Rohil · Vision' : 'Rohil · Smart');
+  const n = (seen[base] = (seen[base] || 0) + 1);
+  return n > 1 ? base + ' ' + n : base;
+}
+
 function buildModelSelect() {
   const opts = [
     { v: '__auto__', l: 'Auto (recommended)' },
@@ -1045,14 +1074,15 @@ function buildModelSelect() {
     { v: '__blend__', l: 'Blend (best of both)' }
   ];
   const seen = {};
+  const seenLabels = {};
   for (const m of MODELS) {
     if (!providerEnabled(m.tag)) continue;
     if (seen[m.id]) continue;
     seen[m.id] = 1;
-    opts.push({ v: m.tag + ':' + m.id, l: m.label });
+    opts.push({ v: m.tag + ':' + m.id, l: friendlyModelLabel(m, seenLabels) });
   }
   const ollama = s.ollamaUrl && s.ollamaModel;
-  if (ollama) opts.push({ v: 'ollama:' + s.ollamaModel, l: 'Ollama / ' + s.ollamaModel + ' (local)' });
+  if (ollama) opts.push({ v: 'ollama:' + s.ollamaModel, l: s.ollamaModel + ' (local)' });
   if (!opts.length) opts.push({ v: '__auto__', l: 'No models yet' });
   modelSelect.innerHTML = opts.map((o) => '<option value="' + esc(o.v) + '">' + esc(o.l) + '</option>').join('');
   updateModeSelect();
