@@ -25,7 +25,7 @@ const PROVIDERS = {
   gemini: { base: 'https://generativelanguage.googleapis.com/v1beta/openai', key: () => s.geminiKey, needKey: true },
   cerebras: { base: 'https://api.cerebras.ai/v1', key: () => s.cerebrasKey, needKey: true },
   groq: { base: 'https://api.groq.com/openai/v1', key: () => s.groqKey, needKey: true },
-  deepseek: { base: 'https://router.huggingface.co/hf-inference/v1', key: () => s.deepseekKey, needKey: true },
+  deepseek: { base: 'https://router.huggingface.co/v1', key: () => s.deepseekKey, needKey: true },
   ollama: { base: () => (s.ollamaUrl || '').replace(/\/+$/, ''), key: () => '', needKey: false }
 };
 
