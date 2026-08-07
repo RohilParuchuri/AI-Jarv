@@ -1605,12 +1605,12 @@ function updateModeSelect() {
 
 function syncSettingsFromUI() {
   s.orKey = $('orKey') ? $('orKey').value.trim() : s.orKey;
-  s.groqKey = $('groqKey').value.trim();
-  s.geminiKey = $('geminiKey').value.trim();
-  s.deepseekKey = $('deepseekKey') ? $('deepseekKey').value.trim() : s.deepseekKey;
-  s.ollamaUrl = $('ollamaUrl').value.trim() || 'http://localhost:11434/v1';
-  s.ollamaModel = $('ollamaModel').value.trim() || 'llama3.2';
-  s.voiceOn = $('voiceOn').checked;
+  if ($('groqKey')) s.groqKey = $('groqKey').value.trim();
+  if ($('geminiKey')) s.geminiKey = $('geminiKey').value.trim();
+  if ($('deepseekKey')) s.deepseekKey = $('deepseekKey').value.trim();
+  if ($('ollamaUrl')) s.ollamaUrl = $('ollamaUrl').value.trim() || 'http://localhost:11434/v1';
+  if ($('ollamaModel')) s.ollamaModel = $('ollamaModel').value.trim() || 'llama3.2';
+  if ($('voiceOn')) s.voiceOn = $('voiceOn').checked;
   s.voiceInputOn = $('voiceInputOn').checked;
   s.voiceRate = parseFloat($('voiceRate').value);
   s.voiceName = $('voice').value || 'default';
@@ -1623,11 +1623,11 @@ function syncSettingsFromUI() {
 
 function loadSettingsIntoUI() {
   if ($('orKey')) $('orKey').value = s.orKey;
-  $('groqKey').value = s.groqKey;
-  $('geminiKey').value = s.geminiKey;
+  if ($('groqKey')) $('groqKey').value = s.groqKey;
+  if ($('geminiKey')) $('geminiKey').value = s.geminiKey;
   if ($('deepseekKey')) $('deepseekKey').value = s.deepseekKey;
-  $('ollamaUrl').value = s.ollamaUrl;
-  $('ollamaModel').value = s.ollamaModel;
+  if ($('ollamaUrl')) $('ollamaUrl').value = s.ollamaUrl;
+  if ($('ollamaModel')) $('ollamaModel').value = s.ollamaModel;
   $('voiceOn').checked = s.voiceOn;
   $('voiceInputOn').checked = s.voiceInputOn;
   $('voiceRate').value = s.voiceRate;
@@ -1681,13 +1681,6 @@ $('imgInput').addEventListener('change', (e) => {
   handleImageFiles(e.target.files);
   e.target.value = '';
 });
-$('showKeys').addEventListener('change', () => {
-  const show = $('showKeys').checked;
-  for (const id of ['orKey', 'groqKey', 'geminiKey', 'deepseekKey']) {
-    const el = $(id);
-    if (el) el.type = show ? 'text' : 'password';
-  }
-});
 
 function hideSettings() {
   syncSettingsFromUI();
@@ -1703,6 +1696,7 @@ $('saveSettingsBtn').addEventListener('click', hideSettings);
 
 ['groqKey', 'geminiKey', 'deepseekKey', 'ollamaUrl', 'ollamaModel', 'voiceOn', 'voiceInputOn', 'voiceRate', 'voice', 'toolSearch', 'toolCalc', 'toolTime'].forEach((id) => {
   const el = $(id);
+  if (!el) return;
   const ev = (el.tagName === 'SELECT' || el.type === 'checkbox') ? 'change' : 'input';
   el.addEventListener(ev, syncSettingsFromUI);
 });
