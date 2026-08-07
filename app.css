@@ -397,6 +397,34 @@ textarea:focus { border-color: var(--accent2); }
   margin-top: 6px;
 }
 
+.home-overlay {
+  position: fixed; inset: 0;
+  background: var(--bg);
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.home-overlay.hidden { display: none; }
+.home-card {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+.home-card .orb { width: 44px; height: 44px; }
+.home-card .btn-primary { max-width: 230px; margin: 0; }
+.home-photo {
+  width: min(200px, 62vw);
+  height: auto;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 3px solid var(--accent2);
+  box-shadow: 0 0 70px rgba(229, 109, 160, 0.35);
+}
+
 /* Setup wizard */
 .setup-overlay {
   position: fixed; inset: 0;

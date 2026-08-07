@@ -1802,6 +1802,8 @@ function initSetup() {
     saveState();
     localStorage.setItem('jarvis.ready', '1');
     overlay.classList.add('hidden');
+    const homeEl = $('home');
+    if (homeEl) homeEl.classList.add('hidden');
     boot();
   });
 }
@@ -1838,3 +1840,15 @@ if (PROXY) {
 } else {
   initSetup();
 }
+
+// Landing screen: "Start Chatting" hides the overlay. Boot flows above are
+// untouched, so the chat always works even if this overlay fails.
+(function initHome() {
+  const overlay = $('home');
+  const btn = $('startChatBtn');
+  if (!overlay || !btn) return;
+  btn.addEventListener('click', () => {
+    overlay.classList.add('hidden');
+    $('input').focus();
+  });
+})();
