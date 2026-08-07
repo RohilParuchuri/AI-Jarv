@@ -1159,6 +1159,45 @@ async function extractMemoryFrom(skipValues) {
 
 /* ---------------- Voice ---------------- */
 
+function updateSpeakBtn() {
+  const b = $('speakBtn');
+  if (!b) return;
+  b.classList.toggle('on', s.voiceOn);
+  b.innerHTML = s.voiceOn ? '&#128266;' : '&#128263;';
+  b.title = s.voiceOn ? 'Mute replies' : 'Speak replies aloud';
+}
+
+function lastAssistantReply() {
+  for (let i = chat.length - 1; i >= 0; i--) {
+    const m = chat[i];
+    if (m.role === 'assistant') {
+      const { text } = contentToParts(m.content);
+      if (text && text.trim()) return text.trim();
+    }
+  }
+  return '';
+}
+
+function stopSpeaking() {
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+}
+
+function toggleSpeakImmediate() {
+  if (s.voiceOn) {
+    s.voiceOn = false;
+    if ($('voiceOn')) $('voiceOn').checked = false;
+    stopSpeaking();
+  } else {
+    s.voiceOn = true;
+    if ($('voiceOn')) $('voiceOn').checked = true;
+    const text = lastAssistantReply();
+    if (text) speak(text);
+    else setStatus('Voice is on. Ask me anything and I\'ll answer aloud.');
+  }
+  updateSpeakBtn();
+  saveState();
+}
+
 function speak(text) {
   if (!('speechSynthesis' in window)) return;
   const clean = text.replace(/\s+/g, ' ').slice(0, 600);
@@ -1461,6 +1500,7 @@ function syncSettingsFromUI() {
   s.toolSearch = $('toolSearch').checked;
   s.toolCalc = $('toolCalc').checked;
   s.toolTime = $('toolTime').checked;
+  updateSpeakBtn();
   saveState();
 }
 
@@ -1479,6 +1519,7 @@ function loadSettingsIntoUI() {
   $('toolSearch').checked = s.toolSearch;
   $('toolCalc').checked = s.toolCalc;
   $('toolTime').checked = s.toolTime;
+  updateSpeakBtn();
 }
 
 /* ---------------- Events & boot ---------------- */
@@ -1534,6 +1575,11 @@ function hideSettings() {
 }
 
 $('settingsBtn').addEventListener('click', () => { $('settingsPanel').classList.remove('hidden'); });
+$('speakBtn').addEventListener('click', toggleSpeakImmediate);
+$('stopSpeakBtn').addEventListener('click', () => {
+  stopSpeaking();
+  setStatus('Stopped speaking — next reply will still use voice.', '');
+});
 $('closeSettings').addEventListener('click', hideSettings);
 $('settingsPanel').addEventListener('click', (e) => { if (e.target === $('settingsPanel')) hideSettings(); });
 $('saveSettingsBtn').addEventListener('click', hideSettings);
