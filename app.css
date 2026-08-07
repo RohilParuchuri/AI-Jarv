@@ -35,6 +35,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
   padding: 10px 14px;
   padding-top: calc(10px + env(safe-area-inset-top));
   background: var(--panel);
@@ -54,7 +56,15 @@ body {
 }
 @keyframes pulse { 50% { transform: scale(1.15); } }
 
-.top-actions { display: flex; gap: 6px; align-items: center; }
+.top-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+  margin-left: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
 
 .req-pill {
   font-size: 0.72rem;
@@ -310,6 +320,10 @@ textarea:focus { border-color: var(--accent2); }
   cursor: pointer;
   font-size: 1.05rem;
   flex-shrink: 0;
+}
+.send-btn.stop {
+  background: var(--err);
+  font-size: 1.15rem;
 }
 .send-btn:disabled { opacity: 0.4; cursor: default; }
 

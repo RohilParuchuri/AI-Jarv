@@ -3,10 +3,17 @@ const $ = (id) => document.getElementById(id);
 async function fetchT(url, opts, ms) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms);
+  const ext = opts && opts.signal;
+  const onExtAbort = () => ctrl.abort();
+  if (ext) {
+    if (ext.aborted) ctrl.abort();
+    else ext.addEventListener('abort', onExtAbort);
+  }
   try {
     return await fetch(url, Object.assign({}, opts, { signal: ctrl.signal }));
   } finally {
     clearTimeout(timer);
+    if (ext) ext.removeEventListener('abort', onExtAbort);
   }
 }
 
@@ -166,6 +173,7 @@ let chat = [];
 let busy = false;
 let aborted = false;
 let liveBubble = null;
+let runAbort = null;
 let liveTextNode = null;
 let liveMeta = '';
 let lastFinalText = '';
@@ -394,7 +402,7 @@ async function chatOnce(model, messages, tools) {
 
   let res;
   try {
-    res = await fetchT(url, { method: 'POST', headers, body: JSON.stringify(body) }, 90000);
+    res = await fetchT(url, { method: 'POST', headers, body: JSON.stringify(body), signal: runAbort && runAbort.signal }, 90000);
   } catch (e) {
     throw new Error('Cannot reach ' + model.label + (isAbort(e) ? ' (timed out)' : ''));
   }
@@ -413,6 +421,84 @@ async function chatOnce(model, messages, tools) {
   return { content: m.content || '', toolCalls };
 }
 
+async function streamChatOnce(model, messages, tools, onToken) {
+  const prov = PROVIDERS[model.tag];
+  const proxied = PROXY && PROXIED_TAGS.includes(model.tag);
+  const base = typeof prov.base === 'function' ? prov.base() : prov.base;
+  const url = proxied ? PROXY : base + '/chat/completions';
+  const headers = { 'Content-Type': 'application/json', Accept: 'text/event-stream' };
+  if (!proxied && prov.key()) headers.Authorization = 'Bearer ' + prov.key();
+  const payload = { model: model.id, messages, stream: true, temperature: 0.6 };
+  if (tools && tools.length) { payload.tools = tools; payload.tool_choice = 'auto'; }
+  if (proxied) payload.provider = model.tag;
+
+  let res;
+  try {
+    res = await fetchT(url, { method: 'POST', headers, body: JSON.stringify(payload), signal: runAbort && runAbort.signal }, 60000);
+  } catch (e) {
+    if (isAbort(e)) throw new Error('__ABORTED__');
+    throw new Error('Cannot reach ' + model.label);
+  }
+  if (!res.ok) {
+    let msg = 'HTTP ' + res.status;
+    try { const j = await res.json(); msg = (j.error && (j.error.message || j.error)) || msg; } catch (_) {}
+    throw new Error(model.label + ': ' + msg);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  let acc = '';
+  const toolBuf = {};
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line.startsWith('data:')) continue;
+        const data = line.slice(5).trim();
+        if (data === '[DONE]') return { content: acc, toolCalls: buildTools() };
+        try {
+          const j = JSON.parse(data);
+          const c = j.choices && j.choices[0];
+          const d = c && c.delta;
+          if (!d) continue;
+          if (d.content) { acc += d.content; if (onToken) onToken(acc); }
+          if (d.tool_calls) {
+            for (const tc of d.tool_calls) {
+              const i = tc.index != null ? tc.index : 0;
+              const cur = toolBuf[i] || (toolBuf[i] = { id: '', name: '', arguments: '' });
+              if (tc.id) cur.id = (cur.id || '') + tc.id;
+              if (tc.function) {
+                if (tc.function.name) cur.name = (cur.name || '') + tc.function.name;
+                if (tc.function.arguments) cur.arguments = (cur.arguments || '') + tc.function.arguments;
+              }
+            }
+          }
+        } catch (_) {}
+      }
+    }
+  } catch (e) {
+    if (isAbort(e)) throw new Error('Request aborted');
+    throw e;
+  }
+  function buildTools() {
+    const out = [];
+    for (const k of Object.keys(toolBuf)) {
+      const t = toolBuf[k];
+      if (!t.name) continue;
+      let args = {};
+      try { args = JSON.parse(t.arguments || '{}'); } catch (_) {}
+      out.push({ id: t.id || '', name: t.name, args });
+    }
+    return out;
+  }
+  return { content: acc, toolCalls: buildTools() };
+}
+
 async function streamChat(model, messages, onToken) {
   const prov = PROVIDERS[model.tag];
   const proxied = PROXY && PROXIED_TAGS.includes(model.tag);
@@ -422,7 +508,7 @@ async function streamChat(model, messages, onToken) {
   if (!proxied && prov.key()) headers.Authorization = 'Bearer ' + prov.key();
   const payload = { model: model.id, messages, stream: true, temperature: 0.6 };
   if (proxied) payload.provider = model.tag;
-  const res = await fetchT(url, { method: 'POST', headers, body: JSON.stringify(payload) }, 60000);
+  const res = await fetchT(url, { method: 'POST', headers, body: JSON.stringify(payload), signal: runAbort && runAbort.signal }, 60000);
   if (!res.ok) {
     let msg = 'HTTP ' + res.status;
     try { const j = await res.json(); msg = (j.error && (j.error.message || j.error)) || msg; } catch (_) {}
@@ -466,6 +552,7 @@ async function run() {
   busy = true;
   setSendDisabled(true);
   aborted = false;
+  runAbort = new AbortController();
 
   if (s.mode === 'blend') { await runBlend(); return; }
 
@@ -496,9 +583,10 @@ async function run() {
         if (aborted) break;
         if (!liveBubble) startBubble();
         try {
-          const { content, toolCalls } = await chatOnce(model, [systemPrompt()].concat(chat), tools);
+          const { content, toolCalls } = await streamChatOnce(model, [systemPrompt()].concat(chat), tools, (t) => {
+            if (liveTextNode) renderText(t);
+          });
           if (toolCalls.length) {
-            aiText += content;
             chat.push({
               role: 'assistant',
               content: content || null,
@@ -518,6 +606,7 @@ async function run() {
           aiText += content;
           renderText(content);
           finishBubble();
+          chat.push({ role: 'assistant', content: content.trim() });
           done = true;
           break;
         } catch (e) {
@@ -532,7 +621,7 @@ async function run() {
       }
     }
 
-    if (aborted) { teardownBubble(); setStatus('Stopped.'); }
+    if (aborted) { if (aiText.trim()) { keepPartialBubble(); } else { teardownBubble(); } setStatus('Stopped.'); }
     else if (lastErr && !done) { teardownBubble(); setStatus('No reply right now — try again in a moment.', 'error'); }
     else if (done) {
       if (s.voiceOn && aiText.trim()) speak(aiText.trim());
@@ -540,9 +629,10 @@ async function run() {
       setStatus('Rohil replied.');
     }
   } catch (e) {
-    teardownBubble();
-    setStatus('Unexpected error: ' + e.message, 'error');
+    if (aborted) { if (aiText.trim()) { keepPartialBubble(); } else { teardownBubble(); } setStatus('Stopped.'); }
+    else { teardownBubble(); setStatus('Unexpected error: ' + e.message, 'error'); }
   } finally {
+    runAbort = null;
     busy = false;
     setSendDisabled(false);
     updateModeSelect();
@@ -884,6 +974,11 @@ function failBubble() {
     liveBubble.classList.add('error');
   }
 }
+function keepPartialBubble() {
+  if (liveBubble) liveBubble.classList.remove('streaming');
+  liveBubble = null;
+  liveTextNode = null;
+}
 function teardownBubble() {
   if (liveBubble) { liveBubble.classList.remove('streaming'); liveTextNode = null; }
   liveBubble = null;
@@ -912,8 +1007,20 @@ function setStatus(text, kind) {
   statusEl.classList.toggle('error', kind === 'error');
 }
 function setSendDisabled(v) {
-  sendBtn.disabled = v;
-  sendBtn.style.opacity = v ? '0.4' : '1';
+  if (v) {
+    sendBtn.disabled = false;
+    sendBtn.innerHTML = '&#9632;';
+    sendBtn.title = 'Stop generating';
+    sendBtn.setAttribute('aria-label', 'Stop generating');
+    sendBtn.classList.add('stop');
+  } else {
+    sendBtn.disabled = false;
+    sendBtn.innerHTML = '&#10148;';
+    sendBtn.title = 'Send';
+    sendBtn.setAttribute('aria-label', 'Send');
+    sendBtn.classList.remove('stop');
+  }
+  sendBtn.style.opacity = '1';
 }
 
 function esc(t) { return String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
@@ -1082,6 +1189,16 @@ function renderHistory() {
   }
   enhanceCode();
   scroll();
+}
+
+function stopCurrent() {
+  if (!busy) return;
+  aborted = true;
+  if (runAbort) runAbort.abort();
+  stopSpeaking();
+  setStatus('Stopping…');
+  const cur = input.value.trim();
+  if (cur) { input.focus(); }
 }
 
 function memoryCommand(val) {
@@ -1524,10 +1641,14 @@ function loadSettingsIntoUI() {
 
 /* ---------------- Events & boot ---------------- */
 
-sendBtn.addEventListener('click', send);
+sendBtn.addEventListener('click', () => { if (busy) stopCurrent(); else send(); });
 input.addEventListener('input', autogrow);
 input.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    if (busy) stopCurrent();
+    else send();
+  }
 });
 
 for (const t of modeTabs) {
@@ -1576,10 +1697,6 @@ function hideSettings() {
 
 $('settingsBtn').addEventListener('click', () => { $('settingsPanel').classList.remove('hidden'); });
 $('speakBtn').addEventListener('click', toggleSpeakImmediate);
-$('stopSpeakBtn').addEventListener('click', () => {
-  stopSpeaking();
-  setStatus('Stopped speaking — next reply will still use voice.', '');
-});
 $('closeSettings').addEventListener('click', hideSettings);
 $('settingsPanel').addEventListener('click', (e) => { if (e.target === $('settingsPanel')) hideSettings(); });
 $('saveSettingsBtn').addEventListener('click', hideSettings);
