@@ -11,8 +11,8 @@ const CONFIG = {
   groq: { base: 'https://api.groq.com/openai/v1', key: () => process.env.GROQ_API_KEY },
   gemini: { base: 'https://generativelanguage.googleapis.com/v1beta/openai', key: () => process.env.GEMINI_API_KEY },
   cerebras: { base: 'https://api.cerebras.ai/v1', key: () => process.env.CEREBRAS_API_KEY },
-  // DeepSeek V4 Flash via Hugging Face Inference Providers (free, no card).
-  deepseek: { base: 'https://router.huggingface.co/hf-inference/v1', key: () => process.env.HF_TOKEN }
+  // DeepSeek V4 Flash via Hugging Face Gateway's free "friendlyhw" provider.
+  deepseek: { base: 'https://router.huggingface.co/v1', key: () => process.env.HF_TOKEN }
 };
 
 const PROXIED_TAGS = Object.keys(CONFIG);
@@ -73,6 +73,7 @@ export default async function handler(req, res) {
     'content-type': 'application/json',
     authorization: 'Bearer ' + key
   };
+  if (provider === 'deepseek') headers['provider'] = 'friendlyhw';
 
   let upstream;
   try {
