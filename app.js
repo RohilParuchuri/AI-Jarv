@@ -32,6 +32,24 @@ const PROVIDERS = {
 const PROXY = location && location.protocol === 'https:' && /(?:\.vercel\.app|ai\-jarv)/i.test(location.hostname)
   ? location.origin + '/api/chat'
   : '';
+
+// Keep the app fresh: register the service worker immediately (even when the
+// setup screen shows) and reload the page the instant a newer app takes
+// control, so phones never stay stuck on an old cached build.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').then((reg) => {
+    reg.update().catch(() => {});
+    if (navigator.serviceWorker.controller) {
+      setInterval(() => reg.update().catch(() => {}), 5 * 60 * 1000);
+    }
+  }).catch(() => {});
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    location.reload();
+  });
+}
 function providerEnabled(tag) {
   if (tag === 'ollama') return !!s.ollamaUrl;
   if (PROXY && (tag === 'groq' || tag === 'openrouter')) return true;
@@ -1151,9 +1169,6 @@ function boot() {
       buildVoices();
       if (cur) $('voice').value = cur;
     };
-  }
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 }
 
