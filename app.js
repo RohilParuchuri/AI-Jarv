@@ -201,7 +201,7 @@ function saveState() { localStorage.setItem('jarvis.config', JSON.stringify(s));
 
 /* ---------------- Chat sessions (windows) ---------------- */
 
-const SESSIONS_KEY = 'rokil.sessions';
+const SESSIONS_KEY = 'rohil.sessions';
 let sessions = loadSessions();
 let activeSessionId = (sessions.some((x) => x.id === s.activeSession) ? s.activeSession : sessions[0].id);
 
