@@ -1875,30 +1875,3 @@ if (PROXY) {
     $('input').focus();
   });
 })();
-
-// Optional "Shortcuts" entry point: open the site as
-// https://your-app/?ask=what+you+want and it auto-types, sends, and starts.
-(function initShortcutAsk() {
-  let ask = '';
-  try {
-    ask = decodeURIComponent(new URLSearchParams(location.search).get('ask') || '').trim();
-  } catch (_) { ask = ''; }
-  if (!ask) return;
-  const fire = () => {
-    const overlay = $('home');
-    const input = $('input');
-    if (!input) return;
-    if (overlay) overlay.classList.add('hidden');
-    input.value = ask;
-    autogrow();
-    send();
-  };
-  // Wait for the app to be booted and the input to be usable.
-  let tries = 0;
-  const tryFire = () => {
-    tries++;
-    if ($('input') && !busy) { fire(); }
-    else if (tries < 40) setTimeout(tryFire, 250);
-  };
-  setTimeout(tryFire, 600);
-})();
