@@ -2,37 +2,48 @@
 // using keys stored ONLY as Vercel environment variables, so no API key ever
 // reaches the browser or the repository.
 
+// IMPORTANT: Vercel's runtime for this project only reliably works with the
+// classic (req, res) handler contract, NOT `export default handler(req)`
+// returning a Web `new Response(...)`. If you switch styles the function will
+// hang with 0 bytes.
+
 const CONFIG = {
   groq: { base: 'https://api.groq.com/openai/v1', key: () => process.env.GROQ_API_KEY },
   openrouter: { base: 'https://openrouter.ai/api/v1', key: () => process.env.OPENROUTER_API_KEY }
 };
 
-export default async function handler(req) {
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+
+export default async function handler(req, res) {
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Use POST' }), {
-      status: 405,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    res.statusCode = 405;
+    res.setHeader('Content-Type', 'application/json');
+    return res.end(JSON.stringify({ error: 'Use POST' }));
   }
 
   let body;
   try {
-    body = await req.json();
+    body = JSON.parse(await readBody(req) || '{}');
   } catch (_) {
-    return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    res.statusCode = 400;
+    res.setHeader('Content-Type', 'application/json');
+    return res.end(JSON.stringify({ error: 'Invalid JSON body' }));
   }
 
   const provider = body.provider;
   const cfg = CONFIG[provider];
   const key = cfg ? cfg.key() : null;
   if (!cfg || !key) {
-    return new Response(JSON.stringify({ error: 'Provider key is not configured on the server' }), {
-      status: 500,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    res.statusCode = 500;
+    res.setHeader('Content-Type', 'application/json');
+    return res.end(JSON.stringify({ error: 'Provider key is not configured on the server' }));
   }
 
   const payload = {
@@ -47,12 +58,12 @@ export default async function handler(req) {
   }
 
   const headers = {
-    'Content-Type': 'application/json',
-    Authorization: 'Bearer ' + key
+    'content-type': 'application/json',
+    authorization: 'Bearer ' + key
   };
   if (provider === 'openrouter') {
-    headers['HTTP-Referer'] = 'https://ai-jarv1234.vercel.app';
-    headers['X-Title'] = 'Rohil';
+    headers['http-referer'] = 'https://ai-jarv1234.vercel.app';
+    headers['x-title'] = 'Rohil';
   }
 
   let upstream;
@@ -63,25 +74,37 @@ export default async function handler(req) {
       body: JSON.stringify(payload)
     });
   } catch (e) {
-    return new Response(JSON.stringify({ error: 'Upstream error: ' + e.message }), {
-      status: 502,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    res.statusCode = 502;
+    res.setHeader('Content-Type', 'application/json');
+    return res.end(JSON.stringify({ error: 'Upstream error: ' + e.message }));
   }
 
   if (payload.stream) {
-    return new Response(upstream.body, {
-      status: upstream.status,
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache'
-      }
+    res.writeHead(upstream.status, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive'
     });
+    if (upstream.body) {
+      const reader = upstream.body.getReader();
+      const ctrl = new AbortController();
+      req.on('close', () => ctrl.abort());
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (ctrl.signal.aborted) break;
+          res.write(value);
+        }
+      } catch (_) {
+        /* aborted or upstream closed */
+      }
+    }
+    return res.end();
   }
 
   const text = await upstream.text();
-  return new Response(text, {
-    status: upstream.status,
-    headers: { 'Content-Type': 'application/json' }
-  });
+  res.statusCode = upstream.status;
+  res.setHeader('Content-Type', 'application/json');
+  return res.end(text);
 }
