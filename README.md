@@ -70,5 +70,5 @@ Settings → **Reset Jarvis** re-shows the first-run wizard and clears stored ke
 ## Good to know
 
 - Keys are stored only in your own browser.
-- `web_search` uses DuckDuckGo (no key needed); if blocked by network it falls back to DDG Instant Answer.
+- `web_search` mixes Wikipedia + DuckDuckGo (no keys); `news_search` pulls live, dated headlines from Google News RSS. Both run through the Vercel function at `api/search.js`.
 - Everything is client-side JS — feel free to hack it. Model list, prompts, and tools live at the top of `app.js`.

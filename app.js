@@ -99,7 +99,8 @@ Style:
 - Math: show minimal working if useful, then put the final answer alone on its own line wrapped in **double asterisks** (for example **42**).
 - Coding: write clean, correct, runnable code inside a \`\`\` code block; then a single bold one-line takeaway under it; include time/space complexity in one short line when relevant for algorithms.
 - Bold only actual answers or key results, never whole sentences.
-- If the answer may need live data (test dates, fees, scholarships), use the web search tool when available.
+- If the answer may need live data (test dates, fees, scholarships, news, current events, weather, prices, sports scores), ALWAYS use the web_search or news_search tool - do not answer from training memory. news_search is for timely/breaking headlines; web_search for everything else.
+- Web search results are authoritative for freshness: if a search result or news headline disagrees with your memory, trust the search result, then summarize what you found.
 Never mention any model, API, or provider name. You are simply Rohil.
 
 SAT knowledge (current, digital SAT):
@@ -145,8 +146,16 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'web_search',
-      description: 'Search the web for current information when the answer may be outdated or you lack exact knowledge.',
-      parameters: { type: 'object', properties: { query: { type: 'string', description: 'Search query' } }, required: ['query'] }
+      description: 'Search the web for current information: the latest news, fresh results, or anything you are not sure about or may be outdated. Always use this when the user asks about news, current events, weather, prices, sports scores, elections, or recent events.',
+      parameters: { type: 'object', properties: { query: { type: 'string', description: 'Search query, as specific as possible' } }, required: ['query'] }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'news_search',
+      description: 'Get live, dated breaking news headlines (today/latest). Use when the user asks what happened recently, today\'s news, or the news about a topic/company/person. Returns headlines with recency and sources.',
+      parameters: { type: 'object', properties: { topic: { type: 'string', description: 'Topic to get news about, e.g. "election" or "Apple". Empty or "top news" for current top headlines.' } }, required: ['topic'] }
     }
   },
   {
@@ -376,9 +385,9 @@ function poolFor(mode) {
 
 function activeTools() {
   const out = [];
-  if (s.toolSearch) out.push(TOOLS[0]);
-  if (s.toolCalc) out.push(TOOLS[1]);
-  if (s.toolTime) out.push(TOOLS[2]);
+  if (s.toolSearch) { out.push(TOOLS[0], TOOLS[1]); }
+  if (s.toolCalc) out.push(TOOLS[2]);
+  if (s.toolTime) out.push(TOOLS[3]);
   return out;
 }
 
@@ -743,6 +752,7 @@ async function runBlend() {
 function toolLabel(c) {
   switch (c.name) {
     case 'web_search': return 'Web search: "' + String(c.args.query || '').slice(0, 80) + '"';
+    case 'news_search': return 'News: ' + (String(c.args.topic || '').slice(0, 60) || 'top headlines');
     case 'calc': return 'Calculate: ' + String(c.args.expression || '');
     case 'current_time': return 'Read clock';
     default: return 'Tool: ' + c.name;
@@ -752,6 +762,7 @@ function toolLabel(c) {
 async function executeTool(name, args) {
   try {
     if (name === 'web_search') return await webSearch(String(args.query || ''));
+    if (name === 'news_search') return await newsSearch(String(args.topic || '').trim() || 'top news');
     if (name === 'calc') return String(parseMath(String(args.expression || '')));
     if (name === 'current_time') return new Date().toString();
     return 'Unknown tool: ' + name;
@@ -791,6 +802,18 @@ async function webSearch(q) {
   }
   if (!out.length) return 'No results found for "' + q + '".';
   return out.slice(0, 5).join('\n');
+}
+
+async function newsSearch(topic) {
+  const q = topic && topic !== 'top news' ? topic : '';
+  try {
+    const r = await fetchT('/api/search?q=' + encodeURIComponent(q) + '&type=news', {}, 20000);
+    if (r.ok) {
+      const j = await r.json();
+      if (j && j.content) return j.content.slice(0, 3500);
+    }
+  } catch (_) {}
+  return 'No live news available for "' + topic + '". Try again in a moment.';
 }
 
 function parseMath(expr) {
