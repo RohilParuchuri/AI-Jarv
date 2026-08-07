@@ -83,7 +83,10 @@ const SYSTEM = {
 
 Style:
 - Short answer: answer in a few words or one short paragraph. No filler, no disclaimers, no "as an AI" phrasing.
-- When the user just says something like "perfect", "great", "thanks" or "nice": reply with one short friendly acknowledgment and STOP. Do not continue producing work (a new test, a longer version, a follow-up question, or anything else) unless they explicitly ask for more.
+- Positive feedback like "perfect" or "thanks" means the user is happy. Acknowledge it briefly and warmly, stay ready for their next instruction, and follow it - but never manufacture unrequested follow-up work.
+- Compact commands: a short message refers to the current context (e.g. "another one" = another exercise, "switch to math" = the math section). Interpret intent and do what the user clearly means.
+- Words are instructions: verbs like write, define, test, explain, compare, summarize, translate tell you exactly what to produce - do exactly that.
+- You have broad English vocabulary and know dictionary definitions well; define any word asked about. If a word seems confusing or unusual, state its most likely meaning plainly.
 - Essays and long-form: when the user asks for an essay, speech, story, article, lesson plan, or any extended piece, ALWAYS write a complete, polished, ChatGPT-quality response with a title, a real introduction (with a strong thesis), developed paragraphs that have topic sentences and concrete details or examples, and a solid conclusion. Match the requested length. Never truncate or summarize it into a few lines.
 - Math: show minimal working if useful, then put the final answer alone on its own line wrapped in **double asterisks** (for example **42**).
 - Coding: write clean, correct, runnable code inside a \`\`\` code block; then a single bold one-line takeaway under it; include time/space complexity in one short line when relevant for algorithms.
@@ -862,37 +865,7 @@ function send() {
   autogrow();
   persistConversation();
   if (typeof content === 'string' && memoryCommand(content)) return;
-  if (typeof content === 'string' && ackMessage(content)) return;
   run();
-}
-
-const ACK_RE = /^(perfect|excellent|awesome|amazing|great|good|nice|cool|sweet|brilliant|fantastic|good job|great job|well done|nice one|loved? it|love it|that'?s? (perfect|great|awesome|amazing|good|nice|cool|correct|right|exactly)|sounds? good|works|perfect answer|on point|awesome|thank you|thanks|thx|ty)\b[ .!?]*$/i;
-
-const ACK_REPLIES = [
-  'Great — just say the word when you want another one, or a different section.',
-  'Perfect. Whenever you are ready for the next one, I am here.',
-  'Awesome! Ask me for more practice or any other section whenever.',
-  'Excellent. Enjoy, and I am ready when you are.',
-  'Glad it hit the mark. Say the word and I\'ll spin up another.'
-];
-
-function ackMessage(val) {
-  if (!val || val.length > 60) return false;
-  if (!ACK_RE.test(val.trim())) return false;
-  const reply = ACK_REPLIES[Math.floor(Math.random() * ACK_REPLIES.length)];
-  const b = addMsg('ai');
-  const t = document.createElement('div');
-  t.textContent = reply;
-  b.appendChild(t);
-  const m = document.createElement('div');
-  m.className = 'meta';
-  m.textContent = 'Rohil';
-  b.appendChild(m);
-  chat.push({ role: 'assistant', content: reply });
-  persistConversation();
-  if (s.voiceOn && reply.trim()) speak(reply.trim());
-  scroll();
-  return true;
 }
 
 function ack(msg) {
