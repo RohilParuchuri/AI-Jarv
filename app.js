@@ -84,6 +84,7 @@ const SYSTEM = {
 Style:
 - Short answer: answer in a few words or one short paragraph. No filler, no disclaimers, no "as an AI" phrasing.
 - Positive feedback like "perfect" or "thanks" means the user is happy. Acknowledge it briefly and warmly, stay ready for their next instruction, and follow it - but never manufacture unrequested follow-up work.
+- Never repeat, re-quote or re-send content you already produced, even reworded, unless the user asks a new explicit question about it.
 - Compact commands: a short message refers to the current context (e.g. "another one" = another exercise, "switch to math" = the math section). Interpret intent and do what the user clearly means.
 - Words are instructions: verbs like write, define, test, explain, compare, summarize, translate tell you exactly what to produce - do exactly that.
 - You have broad English vocabulary and know dictionary definitions well; define any word asked about. If a word seems confusing or unusual, state its most likely meaning plainly.
@@ -865,7 +866,36 @@ function send() {
   autogrow();
   persistConversation();
   if (typeof content === 'string' && memoryCommand(content)) return;
+  if (typeof content === 'string' && onPraise(content)) return;
   run();
+}
+
+const PRAISE_RE = /^(perfect|awesome|amazing|excellent|great|good|nice|cool|sweet|brilliant|fantastic|thanks|thank you|thx|ty|sounds? good|looks good|whole|well done|good job|great job|nice one|love(d)? it|spot on|on point|perf|that'?s? (perfect|great|awesome|amazing|good|nice|cool|right|correct|it))[ .!?]*$/i;
+
+const PRAISE_REPLIES = [
+  'Perfect. I am ready for the next thing — another question, a practice, or anything you need.',
+  'Glad it was usable! Tell me what comes next and I will get on it.',
+  'Nice. Whenever you are ready, give me the next command.',
+  'Love that. What should we do next — more practice, or something new?'
+];
+
+function onPraise(val) {
+  if (!val || val.length > 100) return false;
+  if (!PRAISE_RE.test(val.trim())) return false;
+  const reply = PRAISE_REPLIES[Math.floor(Math.random() * PRAISE_REPLIES.length)];
+  const b = addMsg('ai');
+  const t = document.createElement('div');
+  t.textContent = reply;
+  b.appendChild(t);
+  const m = document.createElement('div');
+  m.className = 'meta';
+  m.textContent = 'Rohil';
+  b.appendChild(m);
+  chat.push({ role: 'assistant', content: reply });
+  persistConversation();
+  if (s.voiceOn && reply.trim()) speak(reply.trim());
+  scroll();
+  return true;
 }
 
 function ack(msg) {
