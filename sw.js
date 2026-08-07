@@ -1,4 +1,4 @@
-const CACHE = 'jarvis-v35';
+const CACHE = 'jarvis-v34';
 const ASSETS = [
   './',
   './index.html',
@@ -6,8 +6,7 @@ const ASSETS = [
   './app.css',
   './manifest.webmanifest',
   './icons/icon-192.png',
-  './icons/icon-512.png',
-  './me.jpg'
+  './icons/icon-512.png'
 ];
 
 self.addEventListener('install', (e) => {
