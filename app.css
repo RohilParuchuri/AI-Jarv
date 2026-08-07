@@ -123,6 +123,21 @@ main { flex: 1; overflow-y: auto; padding: 16px 14px; }
 }
 .bubble pre code { background: none; padding: 0; }
 
+.code-wrap { position: relative; margin: 6px 0; }
+.code-copy {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  background: rgba(255,255,255,0.09);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.7rem;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+.code-copy:hover { color: var(--text); background: rgba(255,255,255,0.16); }
+
 .meta { font-size: 0.7rem; color: var(--muted); margin-top: 6px; }
 
 .typing-dots span {
