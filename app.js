@@ -25,7 +25,7 @@ const PROVIDERS = {
   gemini: { base: 'https://generativelanguage.googleapis.com/v1beta/openai', key: () => s.geminiKey, needKey: true },
   cerebras: { base: 'https://api.cerebras.ai/v1', key: () => s.cerebrasKey, needKey: true },
   groq: { base: 'https://api.groq.com/openai/v1', key: () => s.groqKey, needKey: true },
-  deepseek: { base: 'https://openrouter.ai/api/v1', key: () => s.deepseekKey || s.orKey, needKey: true },
+  deepseek: { base: 'https://router.huggingface.co/hf-inference/v1', key: () => s.deepseekKey, needKey: true },
   ollama: { base: () => (s.ollamaUrl || '').replace(/\/+$/, ''), key: () => '', needKey: false }
 };
 
@@ -73,7 +73,7 @@ const MODELS = [
   { id: 'gemini-2.5-flash-lite', tag: 'gemini', role: 'fast', label: 'Gemini / Flash-Lite 2.5 (free)' },
   { id: 'llama-3.3-70b', tag: 'cerebras', role: 'smart', label: 'Cerebras / Llama 3.3 70B' },
   { id: 'llama-3.1-8b', tag: 'cerebras', role: 'fast', label: 'Cerebras / Llama 3.1 8B' },
-  { id: 'deepseek/deepseek-v4-flash:free', tag: 'deepseek', role: 'smart', label: 'DeepSeek / V4 Flash (free)' }
+  { id: 'deepseek-ai/DeepSeek-V4-Flash', tag: 'deepseek', role: 'smart', label: 'DeepSeek / V4 Flash (free)' }
 ];
 
 const VISION_MODELS = [
