@@ -101,6 +101,7 @@ Style:
 - Bold only actual answers or key results, never whole sentences.
 - If the answer may need live data (test dates, fees, scholarships, news, current events, weather, prices, sports scores), ALWAYS use the web_search or news_search tool - do not answer from training memory. news_search is for timely/breaking headlines; web_search for everything else.
 - Web search results are authoritative for freshness: if a search result or news headline disagrees with your memory, trust the search result, then summarize what you found.
+- Always cite the real, live source URLs you found in your answer (write the full https://... address) so users can click through - especially for news and current events. Prefer recent, authoritative sources.
 Never mention any model, API, or provider name. You are simply Rohil.
 
 SAT knowledge (current, digital SAT):
@@ -1064,6 +1065,16 @@ function renderMarkdown(text) {
   t = t.replace(/\n/g, '<br>');
   t = t.replace(/\u0000P\u0000/g, '<br><br>');
   t = t.replace(/\u0000BLOCK(\d+)\u0000/g, (_m, i) => blocks[+i] || '');
+  // Linkify URLs (but not inside code) so every source is a tap-able link.
+  const kept = [];
+  t = t.replace(/(?:<pre><code>[\s\S]*?<\/code><\/pre>)|<code>[^<]*<\/code>/g, (m) => {
+    kept.push(m); return '\u0000K' + (kept.length - 1) + '\u0000';
+  });
+  t = t.replace(/\bhttps?:\/\/[^\s<>"']+/g, (u) => {
+    const href = u.replace(/[)>,\]]+$/g, '').replace(/['"]+$/g, '');
+    return '<a href="' + href.replace(/"/g, '%22') + '" target="_blank" rel="noopener noreferrer" class="ext-link">' + href + '</a>';
+  });
+  t = t.replace(/\u0000K(\d+)\u0000/g, (_, i) => kept[+i]);
   return t;
 }
 
