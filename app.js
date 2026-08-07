@@ -1824,17 +1824,25 @@ function boot() {
   }
 }
 
+function startApp() {
+  $('home').classList.add('hidden');
+  boot();
+}
+
+$('startChatBtn').addEventListener('click', startApp);
+
 if (PROXY) {
-  // Ask the server which free providers have keys configured, so the model
-  // list only shows ones that can actually reply. Groq stays available even
-  // while this is loading.
+  // Landing screen shows first; "Start Chatting" boots the app. Meanwhile we
+  // fetch the server config so provider state is ready before the first run.
   fetch(CFG, { cache: 'no-store' })
     .then((r) => r.json())
     .then((j) => { if (j && typeof j === 'object') serverProviders = j; })
     .catch(() => {})
-    .finally(() => boot());
+    .finally(() => {});
 } else if (localStorage.getItem('jarvis.ready') === '1') {
-  boot();
+  // Local build that's already set up: show the landing screen only.
 } else {
+  // First-run locally: show the setup wizard instead of the landing screen.
+  $('home').classList.add('hidden');
   initSetup();
 }
