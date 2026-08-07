@@ -1,0 +1,11 @@
+{
+  "name": "jarvis",
+  "version": "1.0.0",
+  "description": "A free multi-API AI assistant (PWA) - OpenRouter, Groq, Ollama",
+  "type": "module",
+  "scripts": {
+    "start": "npx --yes serve . -l 8080 --no-clipboard",
+    "dev": "npx --yes live-server --port=8080"
+  },
+  "license": "MIT"
+}
