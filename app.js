@@ -870,7 +870,7 @@ function send() {
   run();
 }
 
-const PRAISE_RE = /^(perfect|awesome|amazing|excellent|great|good|nice|cool|sweet|brilliant|fantastic|thanks|thank you|thx|ty|sounds? good|looks good|whole|well done|good job|great job|nice one|love(d)? it|spot on|on point|perf|that'?s? (perfect|great|awesome|amazing|good|nice|cool|right|correct|it))[ .!?]*$/i;
+const PRAISE_RE = /^(perfect|awesome|amazing|excellent|great|good|nice|cool|sweet|brilliant|fantastic|thanks|thank you|thx|ty|sounds? good|looks good|well done|good job|great job|nice one|love(d)? it|spot on|on point|perf|that'?s? (perfect|great|awesome|amazing|good|nice|cool|right|correct|it))[ .!?]*$/i;
 
 const PRAISE_REPLIES = [
   'Perfect. I am ready for the next thing — another question, a practice, or anything you need.',
