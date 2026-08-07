@@ -769,6 +769,7 @@ const input = $('input');
 const sendBtn = $('sendBtn');
 const statusEl = $('status');
 const micBtn = $('micBtn');
+const orbEl = document.querySelector('.orb');
 const modeTabs = document.querySelectorAll('.mode-tab');
 const modelSelect = $('modelSelect');
 
@@ -1282,24 +1283,49 @@ function getRecognition() {
     for (let i = e.resultIndex; i < e.results.length; i++) t += e.results[i][0].transcript;
     input.value = t;
     autogrow();
-    if (e.results[0].isFinal) toggleMic(false);
+    if (e.results[0].isFinal) {
+      micBtn.classList.remove('listening');
+      if (orbEl) orbEl.classList.remove('listening');
+      setStatus(t.trim() ? 'Got it — one moment.' : 'Listening…');
+      if (recognition) { try { recognition.stop(); } catch (_) {} }
+    } else {
+      setStatus('Listening: ' + (t.trim() || '…'));
+    }
   };
-  r.onend = () => { micBtn.classList.remove('listening'); if (input.value.trim() && !busy) send(); };
-  r.onerror = () => toggleMic(false);
+  r.onend = () => {
+    micBtn.classList.remove('listening');
+    if (orbEl) orbEl.classList.remove('listening');
+    if (input.value.trim() && !busy) send();
+    else if (!input.value.trim()) setStatus('Tap the mic and speak.' );
+  };
+  r.onerror = (e) => {
+    micBtn.classList.remove('listening');
+    if (orbEl) orbEl.classList.remove('listening');
+    setStatus(e && e.error === 'not-allowed'
+      ? 'Voice access blocked — allow the microphone in your browser.'
+      : 'Didn\'t catch that. Tap the mic and speak again.', 'error');
+  };
   return r;
 }
 
 function toggleMic(on) {
-  if (on === undefined) on = micBtn.classList.contains('listening');
+  if (on === undefined) on = !micBtn.classList.contains('listening');
   if (!on) {
-    if (recognition) recognition.stop();
+    if (recognition) { try { recognition.stop(); } catch (_) {} }
     micBtn.classList.remove('listening');
+    if (orbEl) orbEl.classList.remove('listening');
     return;
   }
   if (!recognition) recognition = getRecognition();
-  if (!recognition) { setStatus('Speech recognition not supported in this browser.', 'error'); return; }
+  if (!recognition) {
+    if (orbEl) { orbEl.classList.add('listening'); setTimeout(() => orbEl.classList.remove('listening'), 700); }
+    setStatus('Voice input isn\'t supported on this device or browser.', 'error');
+    return;
+  }
+  setStatus('Listening… say something to me.');
   micBtn.classList.add('listening');
-  recognition.start();
+  if (orbEl) orbEl.classList.add('listening');
+  try { recognition.start(); } catch (_) {}
 }
 
 /* ---------------- Settings ---------------- */
