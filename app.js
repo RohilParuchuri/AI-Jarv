@@ -25,6 +25,7 @@ const PROVIDERS = {
   gemini: { base: 'https://generativelanguage.googleapis.com/v1beta/openai', key: () => s.geminiKey, needKey: true },
   cerebras: { base: 'https://api.cerebras.ai/v1', key: () => s.cerebrasKey, needKey: true },
   groq: { base: 'https://api.groq.com/openai/v1', key: () => s.groqKey, needKey: true },
+  deepseek: { base: 'https://api.deepseek.com', key: () => s.deepseekKey, needKey: true },
   ollama: { base: () => (s.ollamaUrl || '').replace(/\/+$/, ''), key: () => '', needKey: false }
 };
 
@@ -34,7 +35,7 @@ const PROXY = location && location.protocol === 'https:' && /(?:\.vercel\.app|ai
   ? location.origin + '/api/chat'
   : '';
 const CFG = PROXY ? PROXY.replace(/\/api\/chat$/, '/api/config') : '';
-const PROXIED_TAGS = ['groq', 'gemini', 'cerebras'];
+const PROXIED_TAGS = ['groq', 'gemini', 'cerebras', 'deepseek'];
 let serverProviders = null;
 
 function serverEnabled(tag) {
@@ -71,7 +72,8 @@ const MODELS = [
   { id: 'gemini-2.5-flash', tag: 'gemini', role: 'smart', label: 'Gemini / Flash 2.5 (free)' },
   { id: 'gemini-2.5-flash-lite', tag: 'gemini', role: 'fast', label: 'Gemini / Flash-Lite 2.5 (free)' },
   { id: 'llama-3.3-70b', tag: 'cerebras', role: 'smart', label: 'Cerebras / Llama 3.3 70B' },
-  { id: 'llama-3.1-8b', tag: 'cerebras', role: 'fast', label: 'Cerebras / Llama 3.1 8B' }
+  { id: 'llama-3.1-8b', tag: 'cerebras', role: 'fast', label: 'Cerebras / Llama 3.1 8B' },
+  { id: 'deepseek-v4-flash', tag: 'deepseek', role: 'smart', label: 'DeepSeek / V4 Flash' }
 ];
 
 const VISION_MODELS = [
@@ -151,6 +153,7 @@ function loadState() {
     groqKey: d.groqKey || '',
     geminiKey: d.geminiKey || '',
     cerebrasKey: d.cerebrasKey || '',
+    deepseekKey: d.deepseekKey || '',
     ollamaUrl: d.ollamaUrl || 'http://localhost:11434/v1',
     ollamaModel: d.ollamaModel || 'llama3.2',
     voiceOn: d.voiceOn !== false,
@@ -1014,6 +1017,7 @@ function syncSettingsFromUI() {
   s.groqKey = $('groqKey').value.trim();
   s.geminiKey = $('geminiKey').value.trim();
   s.cerebrasKey = $('cerebrasKey').value.trim();
+  s.deepseekKey = $('deepseekKey').value.trim();
   s.ollamaUrl = $('ollamaUrl').value.trim() || 'http://localhost:11434/v1';
   s.ollamaModel = $('ollamaModel').value.trim() || 'llama3.2';
   s.voiceOn = $('voiceOn').checked;
@@ -1031,6 +1035,7 @@ function loadSettingsIntoUI() {
   $('groqKey').value = s.groqKey;
   $('geminiKey').value = s.geminiKey;
   $('cerebrasKey').value = s.cerebrasKey;
+  $('deepseekKey').value = s.deepseekKey;
   $('ollamaUrl').value = s.ollamaUrl;
   $('ollamaModel').value = s.ollamaModel;
   $('voiceOn').checked = s.voiceOn;
@@ -1083,7 +1088,7 @@ $('imgInput').addEventListener('change', (e) => {
 });
 $('showKeys').addEventListener('change', () => {
   const show = $('showKeys').checked;
-  for (const id of ['orKey', 'groqKey', 'geminiKey', 'cerebrasKey']) {
+  for (const id of ['orKey', 'groqKey', 'geminiKey', 'cerebrasKey', 'deepseekKey']) {
     const el = $(id);
     if (el) el.type = show ? 'text' : 'password';
   }
@@ -1100,7 +1105,7 @@ $('closeSettings').addEventListener('click', hideSettings);
 $('settingsPanel').addEventListener('click', (e) => { if (e.target === $('settingsPanel')) hideSettings(); });
 $('saveSettingsBtn').addEventListener('click', hideSettings);
 
-['groqKey', 'geminiKey', 'cerebrasKey', 'ollamaUrl', 'ollamaModel', 'voiceOn', 'voiceInputOn', 'voiceRate', 'voice', 'toolSearch', 'toolCalc', 'toolTime'].forEach((id) => {
+['groqKey', 'geminiKey', 'cerebrasKey', 'deepseekKey', 'ollamaUrl', 'ollamaModel', 'voiceOn', 'voiceInputOn', 'voiceRate', 'voice', 'toolSearch', 'toolCalc', 'toolTime'].forEach((id) => {
   const el = $(id);
   const ev = (el.tagName === 'SELECT' || el.type === 'checkbox') ? 'change' : 'input';
   el.addEventListener(ev, syncSettingsFromUI);
@@ -1122,6 +1127,7 @@ $('backupBtn').addEventListener('click', () => {
     groqKey: s.groqKey,
     geminiKey: s.geminiKey,
     cerebrasKey: s.cerebrasKey,
+    deepseekKey: s.deepseekKey,
     ollamaUrl: s.ollamaUrl,
     ollamaModel: s.ollamaModel,
     voiceOn: s.voiceOn,
@@ -1156,6 +1162,7 @@ $('restoreFile').addEventListener('change', async (e) => {
     if (String(json.groqKey || '').length) s.groqKey = String(json.groqKey);
     if (String(json.geminiKey || '').length) s.geminiKey = String(json.geminiKey);
     if (String(json.cerebrasKey || '').length) s.cerebrasKey = String(json.cerebrasKey);
+    if (String(json.deepseekKey || '').length) s.deepseekKey = String(json.deepseekKey);
     if (String(json.ollamaUrl || '').length) s.ollamaUrl = String(json.ollamaUrl);
     if (String(json.ollamaModel || '').length) s.ollamaModel = String(json.ollamaModel);
     if (typeof json.voiceOn === 'boolean') s.voiceOn = json.voiceOn;
@@ -1192,11 +1199,13 @@ function initSetup() {
     const grk = $('setupGroq').value.trim();
     const gmk = $('setupGemini').value.trim();
     const cek = $('setupCerebras').value.trim();
+    const dsk = $('setupDeepSeek').value.trim();
     const olU = $('setupOllama').value.trim();
     const olM = $('setupOllamaModel').value.trim();
     if (grk) s.groqKey = grk;
     if (gmk) s.geminiKey = gmk;
     if (cek) s.cerebrasKey = cek;
+    if (dsk) s.deepseekKey = dsk;
     if (olU) s.ollamaUrl = olU;
     else s.ollamaUrl = s.ollamaUrl || 'http://localhost:11434/v1';
     if (olM) s.ollamaModel = olM;

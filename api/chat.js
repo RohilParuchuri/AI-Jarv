@@ -10,7 +10,8 @@
 const CONFIG = {
   groq: { base: 'https://api.groq.com/openai/v1', key: () => process.env.GROQ_API_KEY },
   gemini: { base: 'https://generativelanguage.googleapis.com/v1beta/openai', key: () => process.env.GEMINI_API_KEY },
-  cerebras: { base: 'https://api.cerebras.ai/v1', key: () => process.env.CEREBRAS_API_KEY }
+  cerebras: { base: 'https://api.cerebras.ai/v1', key: () => process.env.CEREBRAS_API_KEY },
+  deepseek: { base: 'https://api.deepseek.com', key: () => process.env.DEEPSEEK_API_KEY }
 };
 
 const PROXIED_TAGS = Object.keys(CONFIG);
