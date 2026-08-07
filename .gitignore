@@ -1,20 +1,3 @@
-node_modules/
-dist/
-*.log
-.env
-.env.*
-!.env.example
-.DS_Store
-.vercel/
-.vscode/
-*.local
-*.key
-*.pem
-secrets*
-*backup*
-
-# API keys: never commit these
-*rohil-backup-*.json
-api-keys.json
-keys.json
-.config/
+﻿# build caches
+.vercel
+node_modules
