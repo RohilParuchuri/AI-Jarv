@@ -9,6 +9,6 @@ export default function handler(req, res) {
     groq: !!process.env.GROQ_API_KEY,
     gemini: !!process.env.GEMINI_API_KEY,
     cerebras: !!process.env.CEREBRAS_API_KEY,
-    deepseek: !!process.env.DEEPSEEK_API_KEY
+    deepseek: !!process.env.OPENROUTER_API_KEY
   }));
 }
