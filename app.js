@@ -59,8 +59,8 @@ function providerEnabled(tag) {
 const MODELS = [
   { id: 'llama-3.3-70b-versatile', tag: 'groq', role: 'smart', label: 'Groq / Llama 3.3 70B' },
   { id: 'llama-3.1-8b-instant', tag: 'groq', role: 'fast', label: 'Groq / Llama 3.1 8B' },
-  { id: 'google/gemma-4-31b-it:free', tag: 'openrouter', role: 'smart', label: 'OpenRouter / Gemma 4 31B (free)' },
   { id: 'openai/gpt-oss-20b:free', tag: 'openrouter', role: 'smart', label: 'OpenRouter / GPT-OSS 20B (free)' },
+  { id: 'google/gemma-4-31b-it:free', tag: 'openrouter', role: 'smart', label: 'OpenRouter / Gemma 4 31B (free)' },
   { id: 'google/gemma-4-26b-a4b-it:free', tag: 'openrouter', role: 'fast', label: 'OpenRouter / Gemma 4 26B (free)' }
 ];
 
@@ -132,6 +132,8 @@ let liveMeta = '';
 let lastFinalText = '';
 let recognition = null;
 let pendingImages = [];
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function loadState() {
   const d = JSON.parse(localStorage.getItem('jarvis.config') || '{}');
@@ -311,8 +313,11 @@ async function run() {
             }
             break;
           }
+          if (!content || !content.trim()) {
+            throw new Error(model.label + ': returned an empty reply');
+          }
           aiText += content;
-          renderText(content || '(the model returned no text)');
+          renderText(content);
           finishBubble();
           done = true;
           break;
@@ -321,6 +326,9 @@ async function run() {
           lastErr = e;
           failBubble();
           setStatus('Provider ' + model.label + ' failed: ' + e.message + ' - trying next...');
+          // Free tiers rate-limit aggressively; pause so the next provider
+          // isn't instantly hammered (which is what caused the cascade).
+          await sleep(/429|quota|rate|too many|limit|capacity/i.test(e.message) ? 1600 : 300);
         }
       }
     }
