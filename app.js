@@ -171,6 +171,11 @@ let liveMeta = '';
 let lastFinalText = '';
 let recognition = null;
 let pendingImages = [];
+let mediaRec = null;
+let mediaChunks = [];
+let mediaStream = null;
+let recQuietTimer = null;
+let recMaxTimer = null;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -1309,16 +1314,18 @@ function getRecognition() {
 }
 
 function toggleMic(on) {
-  if (on === undefined) on = !micBtn.classList.contains('listening');
-  if (!on) {
-    if (recognition) { try { recognition.stop(); } catch (_) {} }
-    micBtn.classList.remove('listening');
-    if (orbEl) orbEl.classList.remove('listening');
-    return;
-  }
+  if (on === undefined) on = !(micBtn.classList.contains('listening') || !!mediaRec);
+  if (!on) { stopVoice(); return; }
+  if (window.SpeechRecognition || window.webkitSpeechRecognition) { startVoiceRecognition(); return; }
+  if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder) { startRecording(); return; }
+  if (orbEl) { orbEl.classList.add('listening'); setTimeout(() => orbEl.classList.remove('listening'), 600); }
+  setStatus('Voice input isn\'t supported on this device or browser.', 'error');
+}
+
+function startVoiceRecognition() {
   if (!recognition) recognition = getRecognition();
   if (!recognition) {
-    if (orbEl) { orbEl.classList.add('listening'); setTimeout(() => orbEl.classList.remove('listening'), 700); }
+    if (orbEl) { orbEl.classList.add('listening'); setTimeout(() => orbEl.classList.remove('listening'), 600); }
     setStatus('Voice input isn\'t supported on this device or browser.', 'error');
     return;
   }
@@ -1326,6 +1333,79 @@ function toggleMic(on) {
   micBtn.classList.add('listening');
   if (orbEl) orbEl.classList.add('listening');
   try { recognition.start(); } catch (_) {}
+}
+
+function stopVoice() {
+  if (mediaRec) { stopRecording(); return; }
+  if (recognition) { try { recognition.stop(); } catch (_) {} }
+  micBtn.classList.remove('listening');
+  if (orbEl) orbEl.classList.remove('listening');
+}
+
+async function startRecording() {
+  if (orbEl) orbEl.classList.remove('listening');
+  setStatus('Setting up the microphone…');
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaStream = stream;
+    const mime = window.MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/webm')
+      ? 'audio/webm'
+      : (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4' : '');
+    mediaRec = mime
+      ? new MediaRecorder(stream, { mimeType: mime })
+      : new MediaRecorder(stream);
+    const blobType = mediaRec.mimeType || 'audio/webm';
+    mediaChunks = [];
+    mediaRec.addEventListener('dataavailable', (e) => {
+      if (e.data && e.data.size) {
+        mediaChunks.push(e.data);
+        clearTimeout(recQuietTimer);
+        recQuietTimer = setTimeout(() => stopRecording(), 1800);
+      }
+    });
+    mediaRec.addEventListener('stop', () => {
+      const blob = new Blob(mediaChunks, { type: blobType });
+      micBtn.classList.remove('listening');
+      if (orbEl) orbEl.classList.remove('listening');
+      setStatus('Got it — transcribing…');
+      uploadAudio(blob);
+    });
+    mediaRec.start(250);
+    micBtn.classList.add('listening');
+    if (orbEl) orbEl.classList.add('listening');
+    setStatus('Listening… speak now.');
+    recMaxTimer = setTimeout(() => stopRecording(), 12000);
+  } catch (e) {
+    setStatus('Microphone not available — allow mic access (or try Chrome).', 'error');
+  }
+}
+
+function stopRecording() {
+  clearTimeout(recQuietTimer);
+  clearTimeout(recMaxTimer);
+  if (mediaStream) {
+    mediaStream.getTracks().forEach((t) => t.stop());
+    mediaStream = null;
+  }
+  if (mediaRec && mediaRec.state !== 'inactive') {
+    try { mediaRec.stop(); } catch (_) {}
+  }
+  mediaRec = null;
+}
+
+async function uploadAudio(blob) {
+  try {
+    const res = await fetchT('/api/stt?mime=' + encodeURIComponent(blob.type || 'audio/webm'), { method: 'POST', body: blob }, 30000);
+    const j = await res.json().catch(() => ({}));
+    const text = String((j && j.text) || '').trim();
+    if (!text) { setStatus('Couldn\'t hear that — try again.', 'error'); return; }
+    input.value = text;
+    autogrow();
+    setStatus('Got it — one moment.');
+    if (!busy) send();
+  } catch (_) {
+    setStatus('Transcription failed — check your connection and try again.', 'error');
+  }
 }
 
 /* ---------------- Settings ---------------- */
