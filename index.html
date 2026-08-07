@@ -55,12 +55,16 @@
     <div class="panel-body">
       <section>
         <h3>Providers</h3>
-        <p class="hint">Free keys: <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">OpenRouter</a>,
-          <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq</a>. Ollama runs locally.</p>
-        <label>OpenRouter API Key</label>
-        <input id="orKey" type="password" placeholder="sk-or-..." autocomplete="off" />
+        <p class="hint">All free, no card: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Gemini</a>,
+          <a href="https://console.groq.com/keys" target="_blank" rel="noopener">Groq</a>,
+          <a href="https://cloud.cerebras.ai/" target="_blank" rel="noopener">Cerebras</a>. Ollama runs locally.
+          On the hosted app these live server-side.</p>
         <label>Groq API Key</label>
         <input id="groqKey" type="password" placeholder="gsk_..." autocomplete="off" />
+        <label>Gemini API Key (free tier)</label>
+        <input id="geminiKey" type="password" placeholder="AIza..." autocomplete="off" />
+        <label>Cerebras API Key (free)</label>
+        <input id="cerebrasKey" type="password" placeholder="csk..." autocomplete="off" />
         <label class="check"><input id="showKeys" type="checkbox" /> Show keys</label>
         <label>Ollama URL</label>
         <input id="ollamaUrl" type="text" placeholder="http://localhost:11434/v1" autocomplete="off" />
@@ -102,10 +106,12 @@
     <div class="setup-card">
       <h1>Rohil</h1>
       <p class="hint">Your multi-API AI assistant.</p>
-      <label>OpenRouter API key <small>(free)</small></label>
-      <input id="setupOr" type="password" placeholder="sk-or-..." />
       <label>Groq API key <small>(free)</small></label>
       <input id="setupGroq" type="password" placeholder="gsk_..." />
+      <label>Gemini API key <small>(free, optional)</small></label>
+      <input id="setupGemini" type="password" placeholder="AIza..." />
+      <label>Cerebras API key <small>(free, optional)</small></label>
+      <input id="setupCerebras" type="password" placeholder="csk..." />
       <label>Ollama URL <small>(leave blank if not installed)</small></label>
       <input id="setupOllama" type="text" placeholder="http://localhost:11434/v1" />
       <label>Ollama model</label>
@@ -119,6 +125,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=20"></script>
+  <script src="app.js?v=22"></script>
 </body>
 </html>

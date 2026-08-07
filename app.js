@@ -22,7 +22,8 @@ async function withTimeout(promise, ms) {
 }
 
 const PROVIDERS = {
-  openrouter: { base: 'https://openrouter.ai/api/v1', key: () => s.orKey, needKey: true },
+  gemini: { base: 'https://generativelanguage.googleapis.com/v1beta/openai', key: () => s.geminiKey, needKey: true },
+  cerebras: { base: 'https://api.cerebras.ai/v1', key: () => s.cerebrasKey, needKey: true },
   groq: { base: 'https://api.groq.com/openai/v1', key: () => s.groqKey, needKey: true },
   ollama: { base: () => (s.ollamaUrl || '').replace(/\/+$/, ''), key: () => '', needKey: false }
 };
@@ -32,6 +33,14 @@ const PROVIDERS = {
 const PROXY = location && location.protocol === 'https:' && /(?:\.vercel\.app|ai\-jarv)/i.test(location.hostname)
   ? location.origin + '/api/chat'
   : '';
+const CFG = PROXY ? PROXY.replace(/\/api\/chat$/, '/api/config') : '';
+const PROXIED_TAGS = ['groq', 'gemini', 'cerebras'];
+let serverProviders = null;
+
+function serverEnabled(tag) {
+  if (serverProviders) return !!serverProviders[tag];
+  return tag === 'groq';
+}
 
 // Keep the app fresh: register the service worker immediately (even when the
 // setup screen shows) and reload the page the instant a newer app takes
@@ -52,21 +61,21 @@ if ('serviceWorker' in navigator) {
 }
 function providerEnabled(tag) {
   if (tag === 'ollama') return !!s.ollamaUrl;
-  if (PROXY && (tag === 'groq' || tag === 'openrouter')) return true;
+  if (PROXIED_TAGS.includes(tag)) return PROXY ? serverEnabled(tag) : !!PROVIDERS[tag].key();
   return !PROVIDERS[tag].needKey || !!PROVIDERS[tag].key();
 }
 
 const MODELS = [
   { id: 'llama-3.3-70b-versatile', tag: 'groq', role: 'smart', label: 'Groq / Llama 3.3 70B' },
   { id: 'llama-3.1-8b-instant', tag: 'groq', role: 'fast', label: 'Groq / Llama 3.1 8B' },
-  { id: 'openai/gpt-oss-20b:free', tag: 'openrouter', role: 'smart', label: 'OpenRouter / GPT-OSS 20B (free)' },
-  { id: 'google/gemma-4-31b-it:free', tag: 'openrouter', role: 'smart', label: 'OpenRouter / Gemma 4 31B (free)' },
-  { id: 'google/gemma-4-26b-a4b-it:free', tag: 'openrouter', role: 'fast', label: 'OpenRouter / Gemma 4 26B (free)' }
+  { id: 'gemini-2.5-flash', tag: 'gemini', role: 'smart', label: 'Gemini / Flash 2.5 (free)' },
+  { id: 'gemini-2.5-flash-lite', tag: 'gemini', role: 'fast', label: 'Gemini / Flash-Lite 2.5 (free)' },
+  { id: 'llama-3.3-70b', tag: 'cerebras', role: 'smart', label: 'Cerebras / Llama 3.3 70B' },
+  { id: 'llama-3.1-8b', tag: 'cerebras', role: 'fast', label: 'Cerebras / Llama 3.1 8B' }
 ];
 
 const VISION_MODELS = [
-  { id: 'google/gemma-4-31b-it:free', tag: 'openrouter', role: 'smart', label: 'OpenRouter / Gemma 4 31B (vision)' },
-  { id: 'nvidia/nemotron-nano-12b-v2-vl:free', tag: 'openrouter', role: 'smart', label: 'OpenRouter / Nemotron Nano VL (vision)' }
+  { id: 'gemini-2.5-flash', tag: 'gemini', role: 'smart', label: 'Gemini / Flash 2.5 (vision)' }
 ];
 
 const SYSTEM = {
@@ -140,6 +149,8 @@ function loadState() {
   return {
     orKey: d.orKey || '',
     groqKey: d.groqKey || '',
+    geminiKey: d.geminiKey || '',
+    cerebrasKey: d.cerebrasKey || '',
     ollamaUrl: d.ollamaUrl || 'http://localhost:11434/v1',
     ollamaModel: d.ollamaModel || 'llama3.2',
     voiceOn: d.voiceOn !== false,
@@ -185,7 +196,7 @@ function hasImagesInChat() {
 
 async function chatOnce(model, messages, tools) {
   const prov = PROVIDERS[model.tag];
-  const proxied = PROXY && (model.tag === 'groq' || model.tag === 'openrouter');
+  const proxied = PROXY && PROXIED_TAGS.includes(model.tag);
   const base = typeof prov.base === 'function' ? prov.base() : prov.base;
   const url = proxied ? PROXY : base + '/chat/completions';
   const body = { model: model.id, messages, stream: false, temperature: 0.6 };
@@ -218,7 +229,7 @@ async function chatOnce(model, messages, tools) {
 
 async function streamChat(model, messages, onToken) {
   const prov = PROVIDERS[model.tag];
-  const proxied = PROXY && (model.tag === 'groq' || model.tag === 'openrouter');
+  const proxied = PROXY && PROXIED_TAGS.includes(model.tag);
   const base = typeof prov.base === 'function' ? prov.base() : prov.base;
   const url = proxied ? PROXY : base + '/chat/completions';
   const headers = { 'Content-Type': 'application/json', Accept: 'text/event-stream' };
@@ -999,8 +1010,10 @@ function updateModeSelect() {
 }
 
 function syncSettingsFromUI() {
-  s.orKey = $('orKey').value.trim();
+  s.orKey = $('orKey') ? $('orKey').value.trim() : s.orKey;
   s.groqKey = $('groqKey').value.trim();
+  s.geminiKey = $('geminiKey').value.trim();
+  s.cerebrasKey = $('cerebrasKey').value.trim();
   s.ollamaUrl = $('ollamaUrl').value.trim() || 'http://localhost:11434/v1';
   s.ollamaModel = $('ollamaModel').value.trim() || 'llama3.2';
   s.voiceOn = $('voiceOn').checked;
@@ -1014,8 +1027,10 @@ function syncSettingsFromUI() {
 }
 
 function loadSettingsIntoUI() {
-  $('orKey').value = s.orKey;
+  if ($('orKey')) $('orKey').value = s.orKey;
   $('groqKey').value = s.groqKey;
+  $('geminiKey').value = s.geminiKey;
+  $('cerebrasKey').value = s.cerebrasKey;
   $('ollamaUrl').value = s.ollamaUrl;
   $('ollamaModel').value = s.ollamaModel;
   $('voiceOn').checked = s.voiceOn;
@@ -1068,8 +1083,10 @@ $('imgInput').addEventListener('change', (e) => {
 });
 $('showKeys').addEventListener('change', () => {
   const show = $('showKeys').checked;
-  $('orKey').type = show ? 'text' : 'password';
-  $('groqKey').type = show ? 'text' : 'password';
+  for (const id of ['orKey', 'groqKey', 'geminiKey', 'cerebrasKey']) {
+    const el = $(id);
+    if (el) el.type = show ? 'text' : 'password';
+  }
 });
 
 function hideSettings() {
@@ -1083,7 +1100,7 @@ $('closeSettings').addEventListener('click', hideSettings);
 $('settingsPanel').addEventListener('click', (e) => { if (e.target === $('settingsPanel')) hideSettings(); });
 $('saveSettingsBtn').addEventListener('click', hideSettings);
 
-['orKey', 'groqKey', 'ollamaUrl', 'ollamaModel', 'voiceOn', 'voiceInputOn', 'voiceRate', 'voice', 'toolSearch', 'toolCalc', 'toolTime'].forEach((id) => {
+['groqKey', 'geminiKey', 'cerebrasKey', 'ollamaUrl', 'ollamaModel', 'voiceOn', 'voiceInputOn', 'voiceRate', 'voice', 'toolSearch', 'toolCalc', 'toolTime'].forEach((id) => {
   const el = $(id);
   const ev = (el.tagName === 'SELECT' || el.type === 'checkbox') ? 'change' : 'input';
   el.addEventListener(ev, syncSettingsFromUI);
@@ -1103,6 +1120,8 @@ $('backupBtn').addEventListener('click', () => {
     exportedAt: new Date().toISOString(),
     orKey: s.orKey,
     groqKey: s.groqKey,
+    geminiKey: s.geminiKey,
+    cerebrasKey: s.cerebrasKey,
     ollamaUrl: s.ollamaUrl,
     ollamaModel: s.ollamaModel,
     voiceOn: s.voiceOn,
@@ -1135,6 +1154,8 @@ $('restoreFile').addEventListener('change', async (e) => {
     if (!json || json.app !== 'rohil') throw new Error('not a Rohil backup file');
     if (String(json.orKey || '').length) s.orKey = String(json.orKey);
     if (String(json.groqKey || '').length) s.groqKey = String(json.groqKey);
+    if (String(json.geminiKey || '').length) s.geminiKey = String(json.geminiKey);
+    if (String(json.cerebrasKey || '').length) s.cerebrasKey = String(json.cerebrasKey);
     if (String(json.ollamaUrl || '').length) s.ollamaUrl = String(json.ollamaUrl);
     if (String(json.ollamaModel || '').length) s.ollamaModel = String(json.ollamaModel);
     if (typeof json.voiceOn === 'boolean') s.voiceOn = json.voiceOn;
@@ -1168,12 +1189,14 @@ function addWelcome() {
 function initSetup() {
   const overlay = $('setup');
   $('setupGo').addEventListener('click', () => {
-    const ork = $('setupOr').value.trim();
     const grk = $('setupGroq').value.trim();
+    const gmk = $('setupGemini').value.trim();
+    const cek = $('setupCerebras').value.trim();
     const olU = $('setupOllama').value.trim();
     const olM = $('setupOllamaModel').value.trim();
-    if (ork) s.orKey = ork;
     if (grk) s.groqKey = grk;
+    if (gmk) s.geminiKey = gmk;
+    if (cek) s.cerebrasKey = cek;
     if (olU) s.ollamaUrl = olU;
     else s.ollamaUrl = s.ollamaUrl || 'http://localhost:11434/v1';
     if (olM) s.ollamaModel = olM;
@@ -1203,7 +1226,16 @@ function boot() {
   }
 }
 
-if (PROXY || localStorage.getItem('jarvis.ready') === '1') {
+if (PROXY) {
+  // Ask the server which free providers have keys configured, so the model
+  // list only shows ones that can actually reply. Groq stays available even
+  // while this is loading.
+  fetch(CFG, { cache: 'no-store' })
+    .then((r) => r.json())
+    .then((j) => { if (j && typeof j === 'object') serverProviders = j; })
+    .catch(() => {})
+    .finally(() => boot());
+} else if (localStorage.getItem('jarvis.ready') === '1') {
   boot();
 } else {
   initSetup();

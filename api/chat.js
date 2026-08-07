@@ -1,6 +1,6 @@
-// Vercel serverless function: proxies chat completions to Groq / OpenRouter
-// using keys stored ONLY as Vercel environment variables, so no API key ever
-// reaches the browser or the repository.
+// Vercel serverless function: proxies chat completions to free providers
+// (Groq, Gemini free tier, Cerebras) using keys stored ONLY as Vercel
+// environment variables, so no API key ever reaches the browser or the repo.
 
 // IMPORTANT: Vercel's runtime for this project only reliably works with the
 // classic (req, res) handler contract, NOT `export default handler(req)`
@@ -9,8 +9,11 @@
 
 const CONFIG = {
   groq: { base: 'https://api.groq.com/openai/v1', key: () => process.env.GROQ_API_KEY },
-  openrouter: { base: 'https://openrouter.ai/api/v1', key: () => process.env.OPENROUTER_API_KEY }
+  gemini: { base: 'https://generativelanguage.googleapis.com/v1beta/openai', key: () => process.env.GEMINI_API_KEY },
+  cerebras: { base: 'https://api.cerebras.ai/v1', key: () => process.env.CEREBRAS_API_KEY }
 };
+
+const PROXIED_TAGS = Object.keys(CONFIG);
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -22,6 +25,13 @@ function readBody(req) {
 }
 
 export default async function handler(req, res) {
+  if (req.method === 'GET') {
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'no-store');
+    return res.end(JSON.stringify(Object.fromEntries(PROXIED_TAGS.map((t) => [t, !!CONFIG[t].key()]))));
+  }
+
   if (req.method !== 'POST') {
     res.statusCode = 405;
     res.setHeader('Content-Type', 'application/json');
@@ -61,10 +71,6 @@ export default async function handler(req, res) {
     'content-type': 'application/json',
     authorization: 'Bearer ' + key
   };
-  if (provider === 'openrouter') {
-    headers['http-referer'] = 'https://ai-jarv1234.vercel.app';
-    headers['x-title'] = 'Rohil';
-  }
 
   let upstream;
   try {
