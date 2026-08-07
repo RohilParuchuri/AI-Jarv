@@ -1006,6 +1006,11 @@ $('imgInput').addEventListener('change', (e) => {
   handleImageFiles(e.target.files);
   e.target.value = '';
 });
+$('showKeys').addEventListener('change', () => {
+  const show = $('showKeys').checked;
+  $('orKey').type = show ? 'text' : 'password';
+  $('groqKey').type = show ? 'text' : 'password';
+});
 
 function hideSettings() {
   syncSettingsFromUI();
