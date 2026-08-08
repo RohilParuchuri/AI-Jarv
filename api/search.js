@@ -13,8 +13,10 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 const NEWS_FEED = 'https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en';
 const NEWS_SEARCH = 'https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q=';
 const JINA = 'https://r.jina.ai/';
+const JINA_SEARCH = 'https://s.jina.ai/';
 const GOOGLE_API_KEY = (typeof process !== 'undefined' && process.env && process.env.GOOGLE_API_KEY) ? process.env.GOOGLE_API_KEY : '';
 const GSE_CX = (typeof process !== 'undefined' && process.env && process.env.GSE_CX) ? process.env.GSE_CX : '';
+const JINA_API_KEY = (typeof process !== 'undefined' && process.env && process.env.JINA_API_KEY) ? process.env.JINA_API_KEY : '';
 
 function stripTags(html) {
   return String(html)
@@ -355,17 +357,18 @@ export default async function handler(req, res) {
       if (inst.lines.length) { parts.push('\nRelated:'); parts.push(...inst.lines); }
       urls = sch.urls.concat(ar.urls, inst.urls);
     } else {
-    const [wp, bg, ddg, inst, ggl, mj] = await Promise.all([
-      wikipedia(q), bing(q), ddgHtml(q), ddgInstant(q), googleSearch(q), mojeekHtml(q)
+    const [wp, bg, ddg, inst, ggl, mj, js] = await Promise.all([
+      wikipedia(q), bing(q), ddgHtml(q), ddgInstant(q), googleSearch(q), mojeekHtml(q), jinaSearch(q)
     ]);
-      parts.push('Wikipedia results for "' + q + '":');
-      parts.push(...wp.lines);
-      if (bg.lines.length) { parts.push('\nBing results:'); parts.push(...bg.lines); }
-      if (ddg.lines.length) { parts.push('\nDuckDuckGo results:'); parts.push(...ddg.lines); }
-      if (inst.lines.length) { parts.push('\nInstant answer:'); parts.push(...inst.lines); }
-      if (ggl.lines.length) { parts.push('\nGoogle results:'); parts.push(...ggl.lines); }
-      if (mj.lines.length) { parts.push('\nMojeek results:'); parts.push(...mj.lines); }
-      urls = wp.urls.concat(mj.urls, bg.urls, ddg.urls);
+    parts.push('Wikipedia results for "' + q + '":');
+    parts.push(...wp.lines);
+    if (js.lines.length) { parts.push('\nGoogle results:'); parts.push(...js.lines); }
+    if (ggl.lines.length) { parts.push('\nGoogle results:'); parts.push(...ggl.lines); }
+    if (mj.lines.length) { parts.push('\nMojeek results:'); parts.push(...mj.lines); }
+    if (bg.lines.length) { parts.push('\nBing results:'); parts.push(...bg.lines); }
+    if (ddg.lines.length) { parts.push('\nDuckDuckGo results:'); parts.push(...ddg.lines); }
+    if (inst.lines.length) { parts.push('\nInstant answer:'); parts.push(...inst.lines); }
+    urls = wp.urls.concat(js.urls, ggl.urls, mj.urls, bg.urls, ddg.urls);
     }
 
     // Best-effort: ground the answer by reading the top non-Wikipedia article.
@@ -402,6 +405,30 @@ async function googleSearch(q) {
       const link = it.link || '';
       const snip = stripTags(it.snippet || '');
       if (!link) continue;
+      lines.push('- ' + title + (snip ? ' - ' + snip.slice(0, 200) : '') + ' - ' + link);
+      urls.push(link);
+    }
+  } catch (_) {}
+  return { lines, urls };
+}
+
+// Google-powered web search via Jina (one API key, no cx). Google's index is
+// what backs these results. Returns titles + real URLs + descriptions.
+async function jinaSearch(q) {
+  const lines = [];
+  const urls = [];
+  if (!JINA_API_KEY) return { lines, urls };
+  try {
+    const j = JSON.parse(await withTimeout(
+      fetchText(JINA_SEARCH + '?q=' + encodeURIComponent(q), { headers: { 'authorization': 'Bearer ' + JINA_API_KEY } }),
+      6500
+    ) || '{}');
+    const data = (j && j.data) || [];
+    for (const it of data.slice(0, 8)) {
+      const title = stripTags(it.title || it?.heading || '');
+      const link = (it.url || it.link || '').toString();
+      const snip = stripTags(it.description || it.content || '');
+      if (!link || !/^https?:\/\//i.test(link)) continue;
       lines.push('- ' + title + (snip ? ' - ' + snip.slice(0, 200) : '') + ' - ' + link);
       urls.push(link);
     }

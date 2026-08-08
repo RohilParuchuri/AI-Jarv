@@ -70,5 +70,6 @@ Settings → **Reset Jarvis** re-shows the first-run wizard and clears stored ke
 ## Good to know
 
 - Keys are stored only in your own browser.
-- `web_search` mixes Wikipedia + DuckDuckGo (no keys); `news_search` pulls live, dated headlines from Google News RSS. Both run through the Vercel function at `api/search.js`.
+- `web_search` searches Wikipedia + (optional) Google via one env-var key: set `JINA_API_KEY` for Google-quality results through Jina's Google-backed search, or `GOOGLE_API_KEY` + `GSE_CX` for the official Programmable Search API. `news_search` pulls live dated headlines from Google News RSS. `research_search` hits Semantic Scholar + arXiv. All search keys are stored only as Vercel env vars (never in source). Result content is read in full via `r.jina.ai` so answers are grounded.
+- If neither engine key is set, `web_search` still runs the scraped engines that the server network can reach (Wikipedia, and Google News for topics).
 - Everything is client-side JS — feel free to hack it. Model list, prompts, and tools live at the top of `app.js`.
