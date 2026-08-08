@@ -605,7 +605,7 @@ async function run() {
   aborted = false;
   runAbort = new AbortController();
 
-  if (s.mode === 'blend') { await runBlend(); return; }
+  if (s.mode === 'blend' || s.mode === 'auto') { await runMix(); return; }
 
   const hasImg = hasImagesInChat();
   let tools = activeTools();
@@ -759,6 +759,118 @@ function addSourceBubble(content) {
   m.appendChild(b);
   chatEl.appendChild(m);
   scroll();
+}
+
+async function runMix() {
+  // "Mix" picks the best answer at the moment: run the tool round with the
+  // top-priority model, then ask every enabled provider in parallel and let a
+  // judge pick whichever answer is actually best right now. Falls back to a
+  // single working provider if mixing fails, so it never freezes.
+  let models = allEnabledModels();
+  try {
+    if (hasImagesInChat()) {
+      models = VISION_MODELS.filter((m) => providerEnabled(m.tag)).concat(models.filter((m) => !VISION_MODELS.some((v) => v.id === m.id && v.tag === m.tag)));
+    }
+    if (!models.length) {
+      setStatus('No model available. Add an API key (or start Ollama).', 'error');
+      return;
+    }
+
+    // 1) Tool round: let the top-priority model decide if a search is needed.
+    const tools = activeTools();
+    if (tools.length) {
+      const lead = poolFor(s.mode, longFormRequest())[0];
+      if (lead) {
+        try {
+          const { content, toolCalls } = await streamChatOnce(lead, [systemPrompt()].concat(chat), tools, (t) => {
+            if (liveTextNode) renderText(t);
+          }, (th) => { if (liveBubble && liveTextNode) renderThinking(th); });
+          if (toolCalls.length) {
+            chat.push({
+              role: 'assistant',
+              content: content || null,
+              tool_calls: toolCalls.map((c) => ({ id: c.id, type: 'function', function: { name: c.name, arguments: JSON.stringify(c.args) } }))
+            });
+            for (const c of toolCalls) {
+              addToolBubble(toolLabel(c), c);
+              const result = await executeTool(c.name, c.args);
+              chat.push({ role: 'tool', tool_call_id: c.id, content: result });
+              updateLastToolBubble(result.slice(0, 160));
+            }
+          }
+        } catch (_) { /* no tools, carry on without search */ }
+      }
+    }
+
+    // 2 = Race every provider in parallel; collect non-empty answers fast.
+    const msgs = [systemPrompt()].concat(chat);
+    const results = [];
+    const jobs = models.map((model) =>
+      withTimeout(chatOnce(model, msgs, []).then((r) => {
+        if (r && r.content && r.content.trim()) return { label: model.label, content: r.content.trim() };
+        return null;
+      }), 15000).catch(() => null)
+    );
+    await Promise.race([
+      Promise.all(jobs.map((j) => j.then((r) => { if (r && r.content && results.length < 4) results.push(r); }))),
+      new Promise((res) => setTimeout(res, 6000))
+    ]);
+
+    if (!results.length) {
+      teardownBubble();
+      setStatus('No reply right now — try again in a few seconds.', 'error');
+      return;
+    }
+
+    if (results.length === 1) {
+      const best = results[0].content;
+      startBubble();
+      renderText(best);
+      finishBubble();
+      chat.push({ role: 'assistant', content: best });
+      setStatus('Rohil replied (' + results[0].label + ').');
+      return;
+    }
+
+    // 3) Judge picks the best answer among the racers, streaming its rewrite.
+    const judge = models[0];
+    const lastUser = chat.length ? (typeof chat[chat.length - 1].content === 'string' ? chat[chat.length - 1].content : 'the question') : 'the question';
+    const judgePrompt = {
+      role: 'user',
+      content:
+        'A user asked: "' + lastUser + '".\n' +
+        'Several AI models produced an answer, marked [LABEL] below. Pick the single best, ' +
+        'most accurate and most helpful answer. Rewrite it cleanly, combining the best facts and wording. ' +
+        'You may favor the most complete or detailed answer. Output ONLY the winning answer with no labels.\n\n' +
+        results.map((r) => '[' + r.label + ']:\n' + r.content).join('\n\n')
+    };
+    startBubble();
+    let best = '', streamed = false;
+    try {
+      const out = await withTimeout(streamChat(judge, [judgePrompt], (t) => { if (liveBubble) renderText(t); },
+        (th) => { if (liveBubble && liveTextNode) renderThinking(th); }), 20000);
+      if (out && out.trim()) { best = out.trim(); streamed = true; }
+    } catch (_) {}
+    if (!streamed) {
+      try { best = (await withTimeout(chatOnce(judge, [judgePrompt], []), 15000)).content.trim(); } catch (_) {}
+      if (!best) best = results[0].content;
+      renderText(best);
+    }
+    finishBubble();
+    chat.push({ role: 'assistant', content: (best || results[0].content).trim() });
+    setStatus('Picked the best of ' + results.length + ' providers.');
+  } catch (e) {
+    teardownBubble();
+    setStatus('Mix error: ' + e.message, 'error');
+  } finally {
+    runAbort = null;
+    busy = false;
+    setSendDisabled(false);
+    updateModeSelect();
+    persistConversation();
+    extractMemoryFrom();
+    scroll();
+  }
 }
 
 async function runBlend() {
