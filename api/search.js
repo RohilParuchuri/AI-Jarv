@@ -324,10 +324,33 @@ export default async function handler(req, res) {
     const url = new URL(req.url || '/', 'http://x');
     const q = String(url.searchParams.get('q') || '').trim();
     const type = String(url.searchParams.get('type') || 'web').trim();
-    if (!q && type !== 'news' && type !== 'research') {
+    if (!q && type !== 'news' && type !== 'research' && type !== 'read') {
       res.statusCode = 400;
       res.setHeader('content-type', 'application/json');
       return res.end(JSON.stringify({ error: 'missing q' }));
+    }
+
+    if (type === 'read') {
+      const target = String(url.searchParams.get('url') || '').trim();
+      if (!target || !/^https?:\/\//i.test(target)) {
+        res.statusCode = 400;
+        res.setHeader('content-type', 'application/json');
+        return res.end(JSON.stringify({ error: 'missing url' }));
+      }
+      const body = await withTimeout(
+        fetchText(JINA + encodeURI(target), { headers: { 'x-respond-with': 'text', 'x-timeout': '20', 'x-wait-for-selector': 'article' } }),
+        20000
+      );
+      const text = stripTags(body).slice(0, 8000);
+      if (text.length < 40) {
+        res.statusCode = 200;
+        res.setHeader('content-type', 'application/json');
+        return res.end(JSON.stringify({ content: 'Could not read ' + target + '. The page may be protected or unavailable.' }));
+      }
+      res.statusCode = 200;
+      res.setHeader('content-type', 'application/json');
+      res.setHeader('cache-control', 'private, max-age=300');
+      return res.end(JSON.stringify({ content: text, url: target }));
     }
 
     const parts = [];

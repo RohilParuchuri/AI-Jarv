@@ -431,13 +431,14 @@ function hasImagesInChat() {
 
 /* ---------------- Providers ---------------- */
 
-async function chatOnce(model, messages, tools) {
+async function chatOnce(model, messages, tools, maxTokens) {
   const prov = PROVIDERS[model.tag];
   const proxied = PROXY && PROXIED_TAGS.includes(model.tag);
   const base = typeof prov.base === 'function' ? prov.base() : prov.base;
   const url = proxied ? PROXY : base + '/chat/completions';
   const body = { model: model.id, messages, stream: false, temperature: 0.6 };
-  if (longFormRequest()) body.max_tokens = 8000;
+  if (maxTokens != null) body.max_tokens = maxTokens;
+  else if (longFormRequest()) body.max_tokens = 8000;
   if (tools && tools.length) { body.tools = tools; body.tool_choice = 'auto'; }
   if (proxied) body.provider = model.tag;
 
@@ -465,7 +466,7 @@ async function chatOnce(model, messages, tools) {
   return { content: m.content || '', toolCalls };
 }
 
-async function streamChatOnce(model, messages, tools, onToken, onThink) {
+async function streamChatOnce(model, messages, tools, onToken, onThink, maxTokens) {
   const prov = PROVIDERS[model.tag];
   const proxied = PROXY && PROXIED_TAGS.includes(model.tag);
   const base = typeof prov.base === 'function' ? prov.base() : prov.base;
@@ -473,7 +474,8 @@ async function streamChatOnce(model, messages, tools, onToken, onThink) {
   const headers = { 'Content-Type': 'application/json', Accept: 'text/event-stream' };
   if (!proxied && prov.key()) headers.Authorization = 'Bearer ' + prov.key();
   const payload = { model: model.id, messages, stream: true, temperature: 0.6 };
-  if (longFormRequest()) payload.max_tokens = 8000;
+  if (maxTokens != null) payload.max_tokens = maxTokens;
+  else if (longFormRequest()) payload.max_tokens = 8000;
   if (tools && tools.length) { payload.tools = tools; payload.tool_choice = 'auto'; }
   if (proxied) payload.provider = model.tag;
 
@@ -605,6 +607,7 @@ async function run() {
   aborted = false;
   runAbort = new AbortController();
 
+  if (s.mode === 'research') { await runResearch(); return; }
   if (s.mode === 'blend' || s.mode === 'auto') { await runMix(); return; }
 
   const hasImg = hasImagesInChat();
@@ -946,6 +949,163 @@ async function runBlend() {
   }
 }
 
+/* ---------------- Deep research mode ---------------- */
+
+// Deep research: split the question into sub-questions, run searches, read the
+// most promising sources, then synthesize one long, cited report. Built for the
+// "longgggg research question" case where a single search round isn't enough.
+const RESEARCH_DEPTH = 4; // how many sub-searches to run
+
+function lastUserText() {
+  for (let i = chat.length - 1; i >= 0; i--) {
+    const m = chat[i];
+    if (m && m.role === 'user') {
+      const t = typeof m.content === 'string' ? m.content : (m.content || []).map((p) => p.text || '').join(' ');
+      if (t.trim()) return t.trim();
+    }
+  }
+  return '';
+}
+
+async function planSubQuestions(question, model) {
+  const prompt = {
+    role: 'user',
+    content:
+      'A user asked a long research question. Break it into exactly ' + RESEARCH_DEPTH +
+      ' smaller, specific sub-questions that, when researched together, will fully answer it. ' +
+      'Return ONLY a JSON array of ' + RESEARCH_DEPTH + ' strings, one per sub-question, no labels, no markdown, no extra text.\n\nQuestion: ' + question
+  };
+  try {
+    const resp = await withTimeout(chatOnce(model, [prompt], []), 20000);
+    const text = String(resp && resp.content || '').trim();
+    const start = text.indexOf('[');
+    const end = text.lastIndexOf(']');
+    if (start < 0 || end <= start) throw new Error('no json');
+    const arr = JSON.parse(text.slice(start, end + 1));
+    if (!Array.isArray(arr) || !arr.length) throw new Error('not array');
+    return arr.map((x) => String(x).trim()).filter(Boolean).slice(0, RESEARCH_DEPTH);
+  } catch (_) {
+    return [question];
+  }
+}
+
+function extractUrls(text) {
+  const out = [];
+  const re = /https?:\/\/[^\s"'<>)\]]+/g;
+  let m;
+  while ((m = re.exec(String(text || '')))) {
+    const u = m[0].replace(/[.,;:]+$/, '');
+    if (u.length > 8 && u.indexOf('wikipedia.org') === -1 && u.indexOf('bing.com') === -1 && !out.includes(u)) out.push(u);
+  }
+  return out.slice(0, 6);
+}
+
+async function runResearch() {
+  try {
+    if (!liveBubble) startBubble();
+    setStatus('Planning research…');
+
+    const question = lastUserText();
+    if (!question) { teardownBubble(); setStatus('Ask a research question first.', 'error'); return; }
+
+    const models = poolFor(s.mode, longFormRequest());
+    if (!models.length) { teardownBubble(); setStatus('No model available for research.', 'error'); return; }
+    const lead = models[0];
+
+    // 1) Plan sub-questions.
+    renderThinking('Breaking the question into smaller research questions…');
+    const subs = await planSubQuestions(question, lead);
+    hideThinking();
+
+    // 2) For each sub-question, search + read the best sources (parallel where safe).
+    let corpus = 'Research question: ' + question + '\n\n';
+    let step = 0;
+    for (const sub of subs) {
+      if (aborted) break;
+      step++;
+      renderThinking('Step ' + step + '/' + subs.length + ' — searching: ' + sub);
+      setStatus('Researching (' + step + '/' + subs.length + '): ' + sub.slice(0, 60) + '…');
+      scroll();
+
+      const searchText = await webSearch(sub);
+      corpus += '\n\n=== SEARCH: ' + sub + ' ===\n' + searchText;
+
+      // Read up to 2 of the most promising sources for depth.
+      const urls = extractUrls(searchText);
+      const reads = [];
+      for (let i = 0; i < Math.min(2, urls.length) && !aborted; i++) {
+        renderThinking('Step ' + step + '/' + subs.length + ' — reading: ' + urls[i].slice(0, 70) + '…');
+        scroll();
+        const r = await readUrl(urls[i]);
+        if (r && r.length > 200) { reads.push('\n[SOURCE ' + urls[i] + ']\n' + r); corpus += '\n\n[SOURCE ' + urls[i] + ']\n' + r; }
+        await sleep(300);
+      }
+      if (reads.length) {
+        renderThinking('Read ' + reads.length + ' source(s) for step ' + step + ' of ' + subs.length);
+        scroll();
+      }
+      await sleep(300);
+    }
+
+    if (aborted) { keepPartialBubble(); setStatus('Research stopped.', 'error'); return; }
+
+    // 3) Synthesize the final report from the corpus.
+    setStatus('Writing the full report…');
+    renderThinking('Reading through ' + corpus.length + ' characters of gathered material…');
+    const synthPrompt = {
+      role: 'user',
+      content:
+        'You have completed deep research on the question below. Below it is the raw material you gathered from web searches and source pages.\n\n' +
+        'Write a comprehensive, well-organized, in-depth report that answers the question. Requirements:\n' +
+        '- Start with a short executive summary.\n' +
+        '- Then organized sections (with clear headings) covering every sub-question.\n' +
+        '- Cite the actual source URLs you used, inline, as [source] or (https://...).\n' +
+        '- Include specifics, numbers, and details found in the material; do not invent facts.\n' +
+        '- End with a "Sources" list of all the URLs referenced.\n' +
+        '- Be thorough — this is a long research report, not a quick answer.\n\n' +
+        'QUESTION: ' + question + '\n\n=== GATHERED MATERIAL ===\n' + corpus.slice(0, 30000)
+    };
+    hideThinking();
+    let report = '';
+    try {
+      report = await withTimeout(streamChatOnce(lead, [synthPrompt], [], (t) => {
+        if (liveTextNode) renderText(t);
+      }, (th) => { if (liveBubble && liveTextNode) renderThinking(th); }, 12000), 90000);
+    } catch (e) {
+      if (isAbort(e)) report = '';
+    }
+    if (!report || !report.trim()) {
+      // Rescue: fall back to non-streaming (tolerates long generation).
+      hideThinking();
+      try {
+        const got = await withTimeout(chatOnce(lead, [synthPrompt], [], 12000), 80000);
+        report = (got && got.content && got.content.trim()) || '';
+      } catch (_) { report = ''; }
+    }
+    if (!report.trim()) {
+      teardownBubble();
+      setStatus('Research ran, but writing the report failed — try again.', 'error');
+      return;
+    }
+    renderText(report.trim());
+    finishBubble();
+    chat.push({ role: 'assistant', content: report.trim() });
+    setStatus('Research complete — full report above.');
+    if (s.voiceOn && report.trim()) speak(report.trim().slice(0, 600));
+  } catch (e) {
+    teardownBubble();
+    setStatus('Research error: ' + e.message, 'error');
+  } finally {
+    runAbort = null;
+    busy = false;
+    setSendDisabled(false);
+    updateModeSelect();
+    persistConversation();
+    extractMemoryFrom();
+    scroll();
+  }
+}
+
 /* ---------------- Tool calling ---------------- */
 
 function toolLabel(c) {
@@ -1031,6 +1191,18 @@ async function researchSearch(topic) {
     }
   } catch (_) {}
   return 'No research results available for "' + topic + '". Try again in a moment.';
+}
+
+async function readUrl(url) {
+  if (!/^https?:\/\//i.test(String(url || ''))) return 'No readable URL.';
+  try {
+    const r = await fetchT('/api/search?type=read&url=' + encodeURIComponent(url), {}, 25000);
+    if (r.ok) {
+      const j = await r.json();
+      if (j && j.content) return j.content.slice(0, 8000);
+    }
+  } catch (_) {}
+  return '';
 }
 
 function parseMath(expr) {
@@ -1844,7 +2016,8 @@ function buildModelSelect() {
     { v: '__auto__', l: 'Auto (recommended)' },
     { v: '__fast__', l: 'Fast' },
     { v: '__smart__', l: 'Smart' },
-    { v: '__blend__', l: 'Blend (best of both)' }
+    { v: '__blend__', l: 'Blend (best of both)' },
+    { v: '__research__', l: 'Deep Research' }
   ];
   const seen = {};
   const seenLabels = {};
