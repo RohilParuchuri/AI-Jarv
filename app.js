@@ -135,6 +135,21 @@ function systemPrompt() {
   return { role: 'system', content };
 }
 
+// Long-form writing (essay/article/report/speech/paper) generates a lot of
+// tokens, so it belongs on the fastest provider (Groq) rather than a
+// reasoning model that spends its whole budget "thinking" first.
+const LONG_FORM_RE = /\b(essay|article|research paper|report|speech|story|lesson plan|book review|letter|blog post|petition|analysis essay|argumentative essay|compare.?and.?contrast|in.?depth)\b/i;
+function longFormRequest() {
+  for (let i = chat.length - 1; i >= 0; i--) {
+    const m = chat[i];
+    if (m.role === 'user') {
+      const txt = typeof m.content === 'string' ? m.content : '';
+return LONG_FORM_RE.test(txt);
+    }
+  }
+  return false;
+}
+
 function persistConversation() {
   localStorage.setItem('rohil.history', JSON.stringify(chat));
   persistSessions();
@@ -381,7 +396,7 @@ function newSession() {
   scroll();
 }
 
-function poolFor(mode) {
+function poolFor(mode, longForm) {
   if (mode === 'manual' && manualModel) return [manualModel];
   const smart = MODELS.filter((m) => m.role === 'smart' && providerEnabled(m.tag));
   const fast = MODELS.filter((m) => m.role === 'fast' && providerEnabled(m.tag));
@@ -389,10 +404,14 @@ function poolFor(mode) {
     ? [{ id: s.ollamaModel, tag: 'ollama', role: 'local', label: 'Ollama / ' + s.ollamaModel }]
     : [];
   const base = smart.concat(fast);
-  const ordered = base.concat(ollama);
-  if (mode === 'fast') return fast.concat(smart).concat(ollama);
-  if (mode === 'smart') return ordered;
-  return ordered;
+  // Long-form essays: pull the fast Groq models to the front so the essay is
+  // written quickly instead of a reasoning model "thinking" for ages first.
+  let ordered = base;
+  if (longForm) ordered = base.filter((m) => m.tag === 'groq').concat(base.filter((m) => m.tag !== 'groq'));
+  const final = ordered.concat(ollama);
+  if (mode === 'fast') return final.filter((m) => m.role === 'fast' || m.tag === 'groq').concat(final.filter((m) => !(m.role === 'fast' || m.tag === 'groq')));
+  if (mode === 'smart') return final;
+  return final;
 }
 
 function activeTools() {
@@ -415,6 +434,7 @@ async function chatOnce(model, messages, tools) {
   const base = typeof prov.base === 'function' ? prov.base() : prov.base;
   const url = proxied ? PROXY : base + '/chat/completions';
   const body = { model: model.id, messages, stream: false, temperature: 0.6 };
+  if (longFormRequest()) body.max_tokens = 8000;
   if (tools && tools.length) { body.tools = tools; body.tool_choice = 'auto'; }
   if (proxied) body.provider = model.tag;
 
@@ -450,6 +470,7 @@ async function streamChatOnce(model, messages, tools, onToken, onThink) {
   const headers = { 'Content-Type': 'application/json', Accept: 'text/event-stream' };
   if (!proxied && prov.key()) headers.Authorization = 'Bearer ' + prov.key();
   const payload = { model: model.id, messages, stream: true, temperature: 0.6 };
+  if (longFormRequest()) payload.max_tokens = 8000;
   if (tools && tools.length) { payload.tools = tools; payload.tool_choice = 'auto'; }
   if (proxied) payload.provider = model.tag;
 
@@ -585,7 +606,7 @@ async function run() {
 
   const hasImg = hasImagesInChat();
   let tools = activeTools();
-  let candidates = poolFor(s.mode);
+  let candidates = poolFor(s.mode, longFormRequest());
   if (hasImg) {
     tools = [];
     const vision = VISION_MODELS.filter((m) => providerEnabled(m.tag));
@@ -657,7 +678,43 @@ async function run() {
     }
 
     if (aborted) { if (aiText.trim()) { keepPartialBubble(); } else { teardownBubble(); } setStatus('Stopped.'); }
-    else if (lastErr && !done) { teardownBubble(); setStatus('No reply right now — try again in a moment.', 'error'); }
+    else if (lastErr && !done) {
+      // Rescue: streaming failed (timeout/rate-limit), but the search results
+      // are already in chat. Do NOT give up and quit — instead send one final
+      // non-streaming request, which tolerates long generation and returns the
+      // whole essay in one shot. This is what makes long output actually land.
+      let rescued = '';
+      for (const rescModel of poolFor(s.mode, longFormRequest())) {
+        if (aborted) break;
+        try {
+          if (!liveBubble) startBubble();
+          if (liveBubble) {
+            liveBubble.classList.remove('error', 'streaming');
+            liveBubble.className = 'bubble streaming';
+          }
+          hideThinking();
+          const got = await chatOnce(rescModel, [systemPrompt()].concat(chat), []);
+          if (got && got.content && got.content.trim()) {
+            rescued = got.content.trim();
+            renderText(rescued);
+            finishBubble();
+            chat.push({ role: 'assistant', content: rescued });
+            break;
+          }
+        } catch (_) { /* try next provider */ }
+      }
+      if (rescued) {
+        aiText = rescued;
+        done = true;
+        lastErr = null;
+        if (s.voiceOn && aiText.trim()) speak(aiText.trim());
+        lastFinalText = aiText;
+        setStatus('Rohil replied.');
+      } else {
+        teardownBubble();
+        setStatus('No reply right now — try again in a few seconds.', 'error');
+      }
+    }
     else if (done) {
       if (s.voiceOn && aiText.trim()) speak(aiText.trim());
       lastFinalText = aiText;

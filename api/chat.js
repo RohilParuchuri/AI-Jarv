@@ -63,6 +63,7 @@ export default async function handler(req, res) {
     stream: !!body.stream,
     temperature: body.temperature != null ? body.temperature : 0.6
   };
+  if (body.max_tokens != null) payload.max_tokens = body.max_tokens;
   if (Array.isArray(body.tools) && body.tools.length) {
     payload.tools = body.tools;
     payload.tool_choice = 'auto';
