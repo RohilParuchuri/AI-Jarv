@@ -1,4 +1,5 @@
 const $ = (id) => document.getElementById(id);
+// Redeploy marker: Google-backed search via JINA_API_KEY now configured in Vercel env.
 
 async function fetchT(url, opts, ms) {
   const ctrl = new AbortController();
