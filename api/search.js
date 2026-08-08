@@ -54,7 +54,8 @@ async function withTimeout(promise, ms) {
 
 async function fetchText(url, opts) {
   try {
-    const r = await fetch(url, Object.assign({ headers: { 'user-agent': UA } }, opts || {}));
+    const headers = Object.assign({ 'user-agent': UA, 'accept': 'text/html,application/json' }, opts && opts.headers);
+    const r = await fetch(url, { headers });
     if (!r.ok) return '';
     return await r.text();
   } catch (_) { return ''; }
