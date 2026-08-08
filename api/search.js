@@ -12,6 +12,10 @@ const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 const NEWS_FEED = 'https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en';
 const NEWS_SEARCH = 'https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q=';
 const JINA = 'https://r.jina.ai/';
+// Optional: Google Programmable Search. Credentials come from Vercel env vars
+// (never committed). Empty = Google results are silently skipped.
+const GOOGLE_API_KEY = (typeof process !== 'undefined' && process.env && process.env.GOOGLE_API_KEY) ? process.env.GOOGLE_API_KEY : '';
+const GSE_CX = (typeof process !== 'undefined' && process.env && process.env.GSE_CX) ? process.env.GSE_CX : '';
 
 function stripTags(html) {
   return String(html)
@@ -145,6 +149,29 @@ async function duckduckgoLite(q) {
     }
   } catch (_) {}
   return { lines, urls: [] };
+}
+
+// Optional Google Programmable Search (requires GOOGLE_API_KEY + GSE_CX env).
+// Falls back silently when credentials are missing.
+async function googleSearch(q) {
+  const lines = [];
+  const urls = [];
+  if (!GOOGLE_API_KEY || !GSE_CX) return { lines, urls };
+  try {
+    const endpoint = 'https://www.googleapis.com/customsearch/v1?key=' + GOOGLE_API_KEY +
+      '&cx=' + GSE_CX + '&num=8&q=' + encodeURIComponent(q);
+    const j = JSON.parse(await withTimeout(fetchText(endpoint), 6500) || '{}');
+    const items = (j && j.items) || [];
+    for (const it of items.slice(0, 8)) {
+      const title = stripTags(it.title || '');
+      const link = it.link || '';
+      const snip = stripTags(it.snippet || '');
+      if (!link) continue;
+      lines.push('- ' + title + (snip ? ' - ' + snip.slice(0, 200) : '') + ' - ' + link);
+      urls.push(link);
+    }
+  } catch (_) {}
+  return { lines, urls };
 }
 
 // Real-content grounder: fetch the readable article text for a top link.
@@ -285,15 +312,16 @@ export default async function handler(req, res) {
     if (wiki.lines.length) { parts.push('\nWikipedia:'); parts.push(...wiki.lines); }
     urls = sch.urls.concat(ar.urls);
     maxChars = 6000;
-  } else {
-    const [wp, bg, ddg] = await Promise.all([
-      wikipedia(q), bing(q), duckduckgoLite(q)
+   } else {
+    const [wp, bg, ddg, ggl] = await Promise.all([
+      wikipedia(q), bing(q), duckduckgoLite(q), googleSearch(q)
     ]);
     parts.push('Wikipedia results for "' + q + '":');
     parts.push(...wp.lines);
     if (bg.lines.length) { parts.push('\nBing results:'); parts.push(...bg.lines); }
     if (ddg.lines.length) { parts.push('\nDuckDuckGo results:'); parts.push(...ddg.lines); }
-    urls = wp.urls.concat(bg.urls);
+    if (ggl.lines.length) { parts.push('\nGoogle results:'); parts.push(...ggl.lines); }
+    urls = wp.urls.concat(bg.urls, ggl.urls);
   }
 
   // Best-effort: ground the answer by reading the actual top article.
