@@ -209,6 +209,7 @@ main { flex: 1; overflow-y: auto; padding: 16px 14px; }
 .code-copy:hover { color: var(--text); background: rgba(255,255,255,0.16); }
 
 .meta { font-size: 0.7rem; color: var(--muted); margin-top: 6px; }
+.thinking { font-size: 0.75rem; color: var(--muted); font-style: italic; white-space: pre-wrap; word-break: break-word; margin-bottom: 4px; opacity: 0.85; }
 
 .typing-dots span {
   display: inline-block;

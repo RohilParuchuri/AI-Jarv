@@ -195,6 +195,7 @@ let aborted = false;
 let liveBubble = null;
 let runAbort = null;
 let liveTextNode = null;
+let liveThinkNode = null;
 let liveMeta = '';
 let lastFinalText = '';
 let recognition = null;
@@ -441,7 +442,7 @@ async function chatOnce(model, messages, tools) {
   return { content: m.content || '', toolCalls };
 }
 
-async function streamChatOnce(model, messages, tools, onToken) {
+async function streamChatOnce(model, messages, tools, onToken, onThink) {
   const prov = PROVIDERS[model.tag];
   const proxied = PROXY && PROXIED_TAGS.includes(model.tag);
   const base = typeof prov.base === 'function' ? prov.base() : prov.base;
@@ -468,6 +469,7 @@ async function streamChatOnce(model, messages, tools, onToken) {
   const decoder = new TextDecoder();
   let buf = '';
   let acc = '';
+  let thinkAcc = '';
   const toolBuf = {};
   try {
     while (true) {
@@ -486,6 +488,7 @@ async function streamChatOnce(model, messages, tools, onToken) {
           const c = j.choices && j.choices[0];
           const d = c && c.delta;
           if (!d) continue;
+          if (d.reasoning_content) { thinkAcc += d.reasoning_content; if (onThink && !acc) onThink(thinkAcc); }
           if (d.content) { acc += d.content; if (onToken) onToken(acc); }
           if (d.tool_calls) {
             for (const tc of d.tool_calls) {
@@ -519,7 +522,7 @@ async function streamChatOnce(model, messages, tools, onToken) {
   return { content: acc, toolCalls: buildTools() };
 }
 
-async function streamChat(model, messages, onToken) {
+async function streamChat(model, messages, onToken, onThink) {
   const prov = PROVIDERS[model.tag];
   const proxied = PROXY && PROXIED_TAGS.includes(model.tag);
   const base = typeof prov.base === 'function' ? prov.base() : prov.base;
@@ -538,6 +541,7 @@ async function streamChat(model, messages, onToken) {
   const decoder = new TextDecoder();
   let buf = '';
   let acc = '';
+  let thinkAcc = '';
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -552,7 +556,10 @@ async function streamChat(model, messages, onToken) {
         if (data === '[DONE]') return acc;
         try {
           const j = JSON.parse(data);
-          const tok = j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content;
+          const d = j.choices && j.choices[0] && j.choices[0].delta;
+          if (!d) continue;
+          if (d.reasoning_content) { thinkAcc += d.reasoning_content; if (onThink && !acc) onThink(thinkAcc); }
+          const tok = d.content;
           if (tok) { acc += tok; if (onToken) onToken(acc); }
         } catch (_) {}
       }
@@ -596,17 +603,25 @@ async function run() {
   let done = false;
   let lastErr = null;
   let aiText = '';
+  let toolsUsed = false;
 
   try {
     for (let round = 0; round < 6 && !done && !aborted; round++) {
+      // After one tool round, the result is already in chat: never re-offer
+      // tools, or reasoning models ping-pong back into the search tool instead
+      // of ever writing the answer (the "keeps thinking" loop).
+      if (toolsUsed) tools = [];
       for (const model of candidates) {
         if (aborted) break;
         if (!liveBubble) startBubble();
         try {
           const { content, toolCalls } = await streamChatOnce(model, [systemPrompt()].concat(chat), tools, (t) => {
             if (liveTextNode) renderText(t);
+          }, (th) => {
+            if (liveBubble && liveTextNode) renderThinking(th);
           });
           if (toolCalls.length) {
+            toolsUsed = true;
             chat.push({
               role: 'assistant',
               content: content || null,
@@ -732,7 +747,8 @@ async function runBlend() {
       startBubble();
       let streamed = false;
       try {
-        const out = await withTimeout(streamChat(judge, [judgePrompt], (t) => { if (liveBubble) renderText(t); }), 15000);
+        const out = await withTimeout(streamChat(judge, [judgePrompt], (t) => { if (liveBubble) renderText(t); },
+          (th) => { if (liveBubble && liveTextNode) renderThinking(th); }), 15000);
         if (out && out.trim()) { best = out.trim(); streamed = true; }
       } catch (_) {}
       if (!streamed) {
@@ -979,6 +995,22 @@ function startBubble() {
   liveBubble.appendChild(liveTextNode);
   liveBubble.appendChild(metaLine('Rohil'));
 }
+function renderThinking(text) {
+  if (!liveBubble) return;
+  if (!liveThinkNode) {
+    liveThinkNode = document.createElement('div');
+    liveThinkNode.className = 'thinking';
+    liveBubble.insertBefore(liveThinkNode, liveBubble.firstChild);
+  }
+  liveThinkNode.textContent = (text || '').slice(-160);
+  scroll();
+}
+function hideThinking() {
+  if (liveThinkNode) {
+    liveThinkNode.remove();
+    liveThinkNode = null;
+  }
+}
 function metaLine(text) {
   const d = document.createElement('div');
   d.className = 'meta';
@@ -986,6 +1018,7 @@ function metaLine(text) {
   return d;
 }
 function renderText(text) {
+  hideThinking();
   liveTextNode.innerHTML = renderMarkdown(text);
   scroll();
 }
