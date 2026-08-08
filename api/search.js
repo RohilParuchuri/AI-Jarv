@@ -129,30 +129,39 @@ function cleanUrl(u) {
   return u;
 }
 
+function decodeUddg(href) {
+  try {
+    const m = String(href || '').match(/uddg=([^&]+)/);
+    return m ? decodeURIComponent(m[1]) : href;
+  } catch (_) { return href || ''; }
+}
+
 async function duckduckgoLite(q) {
   const lines = [];
   try {
     const txt = await withTimeout(
-      fetchText('https://lite.duckduckgo.com/lite/?q=' + encodeURIComponent(q)),
+      fetchText('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(q)),
       6000
     );
-    const re = /<tr class="result">([\s\S]*?)<\/tr>/g;
+    const aRe = /<a[^>]*class="result__a"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/g;
     let m;
     let count = 0;
-    while ((m = re.exec(txt)) && count < 8) {
-      const text = stripTags(m[1]).replace(/^(\s*-?\s*)/, '');
-      const parts = text.match(/^([^:]*[.:])\s+(.+)$/);
-      if (parts) {
-        lines.push('- ' + parts[1] + ' ' + parts[2].slice(0, 240));
-        count++;
-      }
+    while ((m = aRe.exec(txt)) && count < 8) {
+      const url = cleanUrl(decodeUddg(m[1]));
+      const title = stripTags(m[2]);
+      if (!url || !title) continue;
+      const rest = txt.slice(m.index + m[0].length, m.index + m[0].length + 2000);
+      const sm = rest.match(/<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/);
+      const snip = sm ? stripTags(sm[1]) : '';
+      lines.push('- ' + title + (snip ? ' - ' + snip.slice(0, 240) : '') + ' - ' + url);
+      urls.push(url);
+      count++;
     }
   } catch (_) {}
-  return { lines, urls: [] };
+  return { lines, urls };
 }
 
 // Optional Google Programmable Search (requires GOOGLE_API_KEY + GSE_CX env).
-// Falls back silently when credentials are missing.
 async function googleSearch(q) {
   const lines = [];
   const urls = [];

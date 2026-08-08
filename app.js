@@ -797,12 +797,16 @@ async function webSearch(q) {
     const r = await fetchT('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(q), {}, 15000);
     if (r.ok) {
       const txt = await r.text();
-      const doc = new DOMParser().parseFromString(txt, 'text/html');
-      for (const a of doc.querySelectorAll('a.result__a')) {
-        const t = a.textContent.trim();
-        if (t) out.push(t + ' - ' + a.href);
+        const doc = new DOMParser().parseFromString(txt, 'text/html');
+        for (const a of doc.querySelectorAll('a.result__a')) {
+          const t = a.textContent.trim();
+          if (!t) continue;
+          let raw = a.href || '';
+          const m = a.getAttribute('href').match(/uddg=([^&]+)/);
+          if (m) try { raw = decodeURIComponent(m[1]); } catch (_) { raw = a.href; }
+          out.push(t + ' - ' + raw);
+        }
       }
-    }
   } catch (_) {}
   if (!out.length) {
     try {
