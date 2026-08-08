@@ -84,6 +84,12 @@
         <label><input id="toolTime" type="checkbox" checked /> Date / time</label>
       </section>
       <section>
+        <h3>Keys</h3>
+        <label for="orKey">OpenRouter API key <small>(NVIDIA Nemotron &amp; more)</small></label>
+        <input id="orKey" type="password" placeholder="sk-or-v1-..." autocomplete="off" />
+        <p class="hint">On the hosted app, keys live only on the server (Vercel env). This field is for local use.</p>
+      </section>
+      <section>
         <h3>Backup</h3>
         <p class="hint">Save your keys and settings to a file, or restore them later.</p>
         <button id="backupBtn" class="btn-primary">Backup to file</button>
@@ -117,6 +123,8 @@
       <input id="setupGemini" type="password" placeholder="AIza... or AQ..." />
       <label>DeepSeek V4 Flash <small>(free via Hugging Face)</small></label>
       <input id="setupDeepSeek" type="password" placeholder="hf_... (optional)" />
+      <label>OpenRouter key <small>(NVIDIA Nemotron &amp; more, optional)</small></label>
+      <input id="setupOpenRouter" type="password" placeholder="sk-or-v1-..." />
       <label>Ollama URL <small>(leave blank if not installed)</small></label>
       <input id="setupOllama" type="text" placeholder="http://localhost:11434/v1" />
       <label>Ollama model</label>
@@ -130,6 +138,6 @@
     </div>
   </div>
 
-  <script src="app.js?v=49"></script>
+  <script src="app.js?v=50"></script>
 </body>
 </html>

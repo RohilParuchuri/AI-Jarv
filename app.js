@@ -33,6 +33,7 @@ const PROVIDERS = {
   gemini: { base: 'https://generativelanguage.googleapis.com/v1beta/openai', key: () => s.geminiKey, needKey: true },
   groq: { base: 'https://api.groq.com/openai/v1', key: () => s.groqKey, needKey: true },
   deepseek: { base: 'https://router.huggingface.co/v1', key: () => s.deepseekKey, needKey: true },
+  openrouter: { base: 'https://openrouter.ai/api/v1', key: () => s.orKey, needKey: true },
   ollama: { base: () => (s.ollamaUrl || '').replace(/\/+$/, ''), key: () => '', needKey: false }
 };
 
@@ -42,7 +43,7 @@ const PROXY = location && location.protocol === 'https:' && /(?:\.vercel\.app|ai
   ? location.origin + '/api/chat'
   : '';
 const CFG = PROXY ? PROXY.replace(/\/api\/chat$/, '/api/config') : '';
-const PROXIED_TAGS = ['groq', 'gemini', 'deepseek'];
+const PROXIED_TAGS = ['groq', 'gemini', 'deepseek', 'openrouter'];
 let serverProviders = null;
 
 function serverEnabled(tag) {
@@ -78,7 +79,9 @@ const MODELS = [
   { id: 'llama-3.1-8b-instant', tag: 'groq', role: 'fast', label: 'Groq / Llama 3.1 8B' },
   { id: 'gemini-3-flash-preview', tag: 'gemini', role: 'smart', label: 'Gemini / 3 Flash (free)' },
   { id: 'gemini-flash-latest', tag: 'gemini', role: 'fast', label: 'Gemini / Flash (free)' },
-  { id: 'deepseek-ai/DeepSeek-V4-Flash', tag: 'deepseek', role: 'smart', label: 'DeepSeek / V4 Flash (free)' }
+  { id: 'deepseek-ai/DeepSeek-V4-Flash', tag: 'deepseek', role: 'smart', label: 'DeepSeek / V4 Flash (free)' },
+  { id: 'nvidia/nemotron-3-ultra-550b-a55b:free', tag: 'openrouter', role: 'smart', label: 'NVIDIA / Nemotron 3 Ultra 550B (free)' },
+  { id: 'nvidia/nemotron-3-super-120b-a12b:free', tag: 'openrouter', role: 'fast', label: 'NVIDIA / Nemotron 3 Super 120B (free)' }
 ];
 
 const VISION_MODELS = [
@@ -1941,11 +1944,13 @@ function initSetup() {
     const grk = $('setupGroq').value.trim();
     const gmk = $('setupGemini').value.trim();
     const dsk = $('setupDeepSeek').value.trim();
+    const ork = $('setupOpenRouter') ? $('setupOpenRouter').value.trim() : '';
     const olU = $('setupOllama').value.trim();
     const olM = $('setupOllamaModel').value.trim();
     if (grk) s.groqKey = grk;
     if (gmk) s.geminiKey = gmk;
     if (dsk) s.deepseekKey = dsk;
+    if (ork) s.orKey = ork;
     if (olU) s.ollamaUrl = olU;
     else s.ollamaUrl = s.ollamaUrl || 'http://localhost:11434/v1';
     if (olM) s.ollamaModel = olM;

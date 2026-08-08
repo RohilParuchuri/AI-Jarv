@@ -11,7 +11,9 @@ const CONFIG = {
   groq: { base: 'https://api.groq.com/openai/v1', key: () => process.env.GROQ_API_KEY },
   gemini: { base: 'https://generativelanguage.googleapis.com/v1beta/openai', key: () => process.env.GEMINI_API_KEY },
   // DeepSeek V4 Flash via Hugging Face Gateway's free "friendlyhw" provider.
-  deepseek: { base: 'https://router.huggingface.co/v1', key: () => process.env.HF_TOKEN }
+  deepseek: { base: 'https://router.huggingface.co/v1', key: () => process.env.HF_TOKEN },
+  // OpenRouter: hub for many free models incl. NVIDIA Nemotron (sku routing).
+  openrouter: { base: 'https://openrouter.ai/api/v1', key: () => process.env.OPENROUTER_API_KEY }
 };
 
 const PROXIED_TAGS = Object.keys(CONFIG);
@@ -74,6 +76,10 @@ export default async function handler(req, res) {
     authorization: 'Bearer ' + key
   };
   if (provider === 'deepseek') headers['provider'] = 'friendlyhw';
+  if (provider === 'openrouter') {
+    headers['HTTP-Referer'] = 'https://ai-jarv1234.vercel.app';
+    headers['X-Title'] = 'Rohil';
+  }
 
   let upstream;
   try {
