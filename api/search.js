@@ -186,6 +186,37 @@ async function ddgHtml(q) {
   return { lines, urls };
 }
 
+// Mojeek (UK) web search HTML. Reachable for server-side scrapers and returns
+// real destination URLs + snippets with no API key. Used as the reliable web
+// source when Bing/DuckDuckGo block the serverless function's IP.
+async function mojeekHtml(q) {
+  const lines = [];
+  const urls = [];
+  try {
+    const txt = await withTimeout(
+      fetchText('https://www.mojeek.com/search?q=' + encodeURIComponent(q) + '&fmt=standard'),
+      6000
+    );
+    const re = /<li class="r\d+[^"]*">([\s\S]*?)<\/li>/g;
+    let m;
+    let count = 0;
+    while ((m = re.exec(txt)) && count < 8) {
+      const block = m[1];
+      const hm = block.match(/<h2><a class="title"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a><\/h2>/i);
+      if (!hm) continue;
+      const href = hm[1];
+      const title = stripTags(hm[2]);
+      const sm = block.match(/<p class="s">([\s\S]*?)<\/p>/i);
+      const snip = sm ? stripTags(sm[1]) : '';
+      if (!title) continue;
+      lines.push('- ' + title + (snip ? ' - ' + snip.slice(0, 180) : '') + ' - ' + href);
+      urls.push(href);
+      count++;
+    }
+  } catch (_) {}
+  return { lines, urls };
+}
+
 // Real-content grounder: fetch the readable article text for the top link.
 async function reader(url) {
   return withTimeout(fetchText(JINA + encodeURI(url), { headers: { 'x-respond-with': 'text', 'x-timeout': '2' } }), 2800)
@@ -324,20 +355,23 @@ export default async function handler(req, res) {
       if (inst.lines.length) { parts.push('\nRelated:'); parts.push(...inst.lines); }
       urls = sch.urls.concat(ar.urls, inst.urls);
     } else {
-      const [wp, bg, ddg, inst, ggl] = await Promise.all([
-        wikipedia(q), bing(q), ddgHtml(q), ddgInstant(q), googleSearch(q)
-      ]);
+    const [wp, bg, ddg, inst, ggl, mj] = await Promise.all([
+      wikipedia(q), bing(q), ddgHtml(q), ddgInstant(q), googleSearch(q), mojeekHtml(q)
+    ]);
       parts.push('Wikipedia results for "' + q + '":');
       parts.push(...wp.lines);
       if (bg.lines.length) { parts.push('\nBing results:'); parts.push(...bg.lines); }
       if (ddg.lines.length) { parts.push('\nDuckDuckGo results:'); parts.push(...ddg.lines); }
       if (inst.lines.length) { parts.push('\nInstant answer:'); parts.push(...inst.lines); }
       if (ggl.lines.length) { parts.push('\nGoogle results:'); parts.push(...ggl.lines); }
-      urls = wp.urls.concat(bg.urls, ddg.urls, inst.urls);
+      if (mj.lines.length) { parts.push('\nMojeek results:'); parts.push(...mj.lines); }
+      urls = wp.urls.concat(mj.urls, bg.urls, ddg.urls);
     }
 
-    // Best-effort: ground the answer by reading the actual top article.
-    const ground = await Promise.all(urls.slice(0, 2).map((u) => reader(u)));
+    // Best-effort: ground the answer by reading the top non-Wikipedia article.
+    const ground = await Promise.all(
+      urls.filter((u) => u && u.indexOf('wikipedia.org') === -1).slice(0, 2).map((u) => reader(u))
+    );
     for (const g of ground) if (g) parts.push(g);
 
     let content = (parts.join('\n').slice(0, 6000)) || 'No results found for "' + q + '".';
