@@ -222,7 +222,7 @@ async function mojeekHtml(q) {
 
 // Real-content grounder: fetch the readable article text for the top link.
 async function reader(url) {
-  return withTimeout(fetchText(JINA + encodeURI(url), { headers: { 'x-respond-with': 'text', 'x-timeout': '2' } }), 2800)
+  return withTimeout(fetchText(JINA + encodeURI(url), { headers: { 'authorization': JINA_API_KEY ? 'Bearer ' + JINA_API_KEY : '', 'x-respond-with': 'text', 'x-timeout': '2' } }), 2800)
     .then((t) => {
       const cleaned = stripTags(t).slice(0, 500);
       if (!cleaned || cleaned.length < 20) return '';
@@ -338,7 +338,7 @@ export default async function handler(req, res) {
         return res.end(JSON.stringify({ error: 'missing url' }));
       }
       const body = await withTimeout(
-        fetchText(JINA + encodeURI(target), { headers: { 'x-respond-with': 'text', 'x-timeout': '20', 'x-wait-for-selector': 'article' } }),
+        fetchText(JINA + encodeURI(target), { headers: { 'authorization': JINA_API_KEY ? 'Bearer ' + JINA_API_KEY : '', 'x-respond-with': 'text', 'x-timeout': '20', 'x-wait-for-selector': 'article' } }),
         20000
       );
       const text = stripTags(body).slice(0, 8000);
