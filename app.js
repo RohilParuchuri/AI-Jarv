@@ -100,6 +100,7 @@ Style:
 - Coding: write clean, correct, runnable code inside a \`\`\` code block; then a single bold one-line takeaway under it; include time/space complexity in one short line when relevant for algorithms.
 - Bold only actual answers or key results, never whole sentences.
 - If the answer may need live data (test dates, fees, scholarships, news, current events, weather, prices, sports scores), ALWAYS use the web_search or news_search tool - do not answer from training memory. news_search is for timely/breaking headlines; web_search for everything else.
+- If the user asks for research studies, peer-reviewed papers, evidence, or scientific findings, ALWAYS use research_search to retrieve real academic papers (PubMed/arXiv/DOI), then summarize the findings with source links.
 - Web search results are authoritative for freshness: if a search result or news headline disagrees with your memory, trust the search result, then summarize what you found.
 - Always cite the real, live source URLs you found in your answer (write the full https://... address) so users can click through - especially for news and current events. Prefer recent, authoritative sources.
 Never mention any model, API, or provider name. You are simply Rohil.
@@ -155,8 +156,16 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'news_search',
-      description: 'Get live, dated breaking news headlines (today/latest). Use when the user asks what happened recently, today\'s news, or the news about a topic/company/person. Returns headlines with recency and sources.',
-      parameters: { type: 'object', properties: { topic: { type: 'string', description: 'Topic to get news about, e.g. "election" or "Apple". Empty or "top news" for current top headlines.' } }, required: ['topic'] }
+      description: 'Get live, dated breaking news headlines (today/latest). Use when the user asks what happened recently, the news, current events, or for fresh news about a topic/company/person. Returns headlines with sources and recency.',
+      parameters: { type: 'object', properties: { topic: { type: 'string', description: 'Topic for the news, e.g. "Apple" or "climate". Empty/"" for top headlines.' } }, required: ['topic'] }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'research_search',
+      description: 'Search peer-reviewed research papers and academic articles (PubMed/arXiv/DOI). Use only when the user explicitly asks for research studies, journal articles, or scientific evidence on a topic.',
+      parameters: { type: 'object', properties: { topic: { type: 'string', description: 'Research question or keywords, e.g. "children mental health peer support"' } }, required: ['topic'] }
     }
   },
   {
@@ -386,9 +395,9 @@ function poolFor(mode) {
 
 function activeTools() {
   const out = [];
-  if (s.toolSearch) { out.push(TOOLS[0], TOOLS[1]); }
-  if (s.toolCalc) out.push(TOOLS[2]);
-  if (s.toolTime) out.push(TOOLS[3]);
+  if (s.toolSearch) { out.push(TOOLS[0], TOOLS[1], TOOLS[2]); }
+  if (s.toolCalc) out.push(TOOLS[3]);
+  if (s.toolTime) out.push(TOOLS[4]);
   return out;
 }
 
@@ -754,6 +763,7 @@ function toolLabel(c) {
   switch (c.name) {
     case 'web_search': return 'Web search: "' + String(c.args.query || '').slice(0, 80) + '"';
     case 'news_search': return 'News: ' + (String(c.args.topic || '').slice(0, 60) || 'top headlines');
+    case 'research_search': return 'Research: ' + (String(c.args.topic || '').slice(0, 60) || 'papers');
     case 'calc': return 'Calculate: ' + String(c.args.expression || '');
     case 'current_time': return 'Read clock';
     default: return 'Tool: ' + c.name;
@@ -764,6 +774,7 @@ async function executeTool(name, args) {
   try {
     if (name === 'web_search') return await webSearch(String(args.query || ''));
     if (name === 'news_search') return await newsSearch(String(args.topic || '').trim() || 'top news');
+    if (name === 'research_search') return await researchSearch(String(args.topic || '').trim());
     if (name === 'calc') return String(parseMath(String(args.expression || '')));
     if (name === 'current_time') return new Date().toString();
     return 'Unknown tool: ' + name;
@@ -808,13 +819,25 @@ async function webSearch(q) {
 async function newsSearch(topic) {
   const q = topic && topic !== 'top news' ? topic : '';
   try {
-    const r = await fetchT('/api/search?q=' + encodeURIComponent(q) + '&type=news', {}, 20000);
+    const r = await fetchT('/api/search?q=' + encodeURIComponent(q) + '&type=news', {}, 22000);
     if (r.ok) {
       const j = await r.json();
-      if (j && j.content) return j.content.slice(0, 3500);
+      if (j && j.content) return j.content.slice(0, 4000);
     }
   } catch (_) {}
   return 'No live news available for "' + topic + '". Try again in a moment.';
+}
+
+async function researchSearch(topic) {
+  if (!topic) return 'No research query provided.';
+  try {
+    const r = await fetchT('/api/search?q=' + encodeURIComponent(topic) + '&type=research', {}, 22000);
+    if (r.ok) {
+      const j = await r.json();
+      if (j && j.content) return j.content.slice(0, 5000);
+    }
+  } catch (_) {}
+  return 'No research results available for "' + topic + '". Try again in a moment.';
 }
 
 function parseMath(expr) {
