@@ -337,11 +337,21 @@ export default async function handler(req, res) {
         res.setHeader('content-type', 'application/json');
         return res.end(JSON.stringify({ error: 'missing url' }));
       }
-      const body = await withTimeout(
-        fetchText(JINA + encodeURI(target), { headers: { 'authorization': JINA_API_KEY ? 'Bearer ' + JINA_API_KEY : '', 'x-respond-with': 'text', 'x-timeout': '20', 'x-wait-for-selector': 'article' } }),
-        20000
-      );
-      const text = stripTags(body).slice(0, 8000);
+      let text = '';
+      // Try the Jina reader first (clean article text), then fall back to a
+      // direct fetch with a browser UA and simple tag-stripping so deep
+      // research still works if the Jina key is missing/rate-limited.
+      if (JINA_API_KEY) {
+        const body = await withTimeout(
+          fetchText(JINA + encodeURI(target), { headers: { 'authorization': 'Bearer ' + JINA_API_KEY, 'x-respond-with': 'text', 'x-timeout': '15', 'x-wait-for-selector': 'article' } }),
+          18000
+        );
+        text = stripTags(body).trim();
+      }
+      if (!text || text.length < 100) {
+        const raw = await withTimeout(fetchText(target, { headers: { 'user-agent': UA } }), 12000);
+        text = stripTags(raw).trim().slice(0, 6000);
+      }
       if (text.length < 40) {
         res.statusCode = 200;
         res.setHeader('content-type', 'application/json');
@@ -350,7 +360,7 @@ export default async function handler(req, res) {
       res.statusCode = 200;
       res.setHeader('content-type', 'application/json');
       res.setHeader('cache-control', 'private, max-age=300');
-      return res.end(JSON.stringify({ content: text, url: target }));
+      return res.end(JSON.stringify({ content: text.slice(0, 8000), url: target }));
     }
 
     const parts = [];
